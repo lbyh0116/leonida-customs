@@ -8,3 +8,7 @@
 *.gltf
 *.rpf
 *.ttpf
+
+# WinUI build outputs
+**/bin/
+**/obj/

@@ -16,7 +16,7 @@ void fragment() {
 	vec2 p = world_point.xz;
 	float distance_from_center = length(p);
 	float edge = smoothstep(4.0, 19.0, distance_from_center);
-	vec3 color = mix(vec3(0.031, 0.036, 0.048), vec3(0.010, 0.013, 0.020), edge);
+	vec3 color = mix(vec3(0.70, 0.71, 0.73), vec3(0.57, 0.60, 0.64), edge);
 	float grain = fract(sin(dot(floor(p * 240.0), vec2(127.1, 311.7))) * 43758.5453);
 	color *= 0.98 + grain * 0.04;
 	if (show_grid) {
@@ -34,7 +34,7 @@ void fragment() {
 		}
 	}
 	ALBEDO = color;
-	METALLIC = 0.08;
-	ROUGHNESS = mix(surface_roughness, 0.63, edge);
+	METALLIC = 0.025;
+	ROUGHNESS = mix(surface_roughness, 0.68, edge);
 	SPECULAR = 0.34;
 }

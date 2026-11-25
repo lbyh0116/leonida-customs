@@ -142,19 +142,19 @@ func _build_ui() -> void:
 	var overlays := VBoxContainer.new()
 	overlays.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	view_overlay.add_child(overlays)
-	view_type = _label("三维预览", 13, "#f6b2cf")
+	view_type = _label("三维预览", 13, "#914155")
 	overlays.add_child(view_type)
-	view_title = _label("载具预览", 31)
+	view_title = _label("载具预览", 31, "#201f28")
 	view_title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	overlays.add_child(view_title)
-	view_meta = _label("", 13, "#c9c5d5")
+	view_meta = _label("", 13, "#3d4354")
 	overlays.add_child(view_meta)
 	var center := CenterContainer.new()
 	center.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	overlays.add_child(center)
-	empty_view = _label("打开游戏目录，在左侧选择载具。", 15, "#dddbea")
-	empty_view.add_theme_color_override("font_shadow_color", Color.BLACK)
+	empty_view = _label("打开游戏目录，在左侧选择载具。", 15, "#292d3a")
+	empty_view.add_theme_color_override("font_shadow_color", Color.WHITE)
 	empty_view.add_theme_constant_override("shadow_offset_y", 1)
 	center.add_child(empty_view)
 	var camera_bar := HBoxContainer.new()
@@ -176,7 +176,7 @@ func _build_ui() -> void:
 	free_button.toggle_mode = true
 	free_button.toggled.connect(preview_stage.set_free_view)
 	camera_bar.add_child(free_button)
-	var instructions := _label("左键旋转  ·  右键平移  ·  滚轮缩放", 12, "#d1ccda")
+	var instructions := _label("左键旋转  ·  右键平移  ·  滚轮缩放", 12, "#303747")
 	instructions.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	instructions.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	instructions.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT

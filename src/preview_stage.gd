@@ -24,8 +24,8 @@ var _fly_speed := 4.0
 var _free_view := false
 var _lighting := {
 	"key": 1.35, "azimuth": -42.0, "elevation": 46.0, "size": 14.0, "specular": 0.0,
-	"fill": 0.68, "ambient": 0.62, "exposure": 1.07, "floor_roughness": 0.37,
-	"light_color": Color("#fff3e8"), "background_color": Color("#242b36"),
+	"fill": 0.68, "ambient": 0.62, "exposure": 1.07, "floor_roughness": 0.43,
+	"light_color": Color("#fff3e8"), "background_color": Color("#e9edf1"),
 }
 var camera: Camera3D
 var model: Node3D
@@ -94,7 +94,7 @@ func _add_environment() -> void:
 	environment.background_mode = Environment.BG_COLOR
 	environment.background_color = _lighting.background_color
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	environment.ambient_light_color = Color("#dad7f0")
+	environment.ambient_light_color = Color("#e8edf4")
 	environment.ambient_light_energy = _lighting.ambient
 	environment.tonemap_mode = Environment.TONE_MAPPER_AGX
 	environment.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
@@ -126,7 +126,10 @@ func _add_environment() -> void:
 	environment.sky = sky
 	environment.fog_enabled = true
 	environment.fog_light_color = environment.background_color
-	environment.fog_density = 0.024
+	environment.fog_mode = Environment.FOG_MODE_DEPTH
+	environment.fog_depth_begin = 14.0
+	environment.fog_depth_end = 43.0
+	environment.fog_density = 1.0
 	world.environment = environment
 	stage.add_child(world)
 
