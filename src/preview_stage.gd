@@ -5,6 +5,7 @@ signal ray_status_changed(message: String)
 
 const FLOOR_SHADER := preload("res://src/render_studio_floor.gdshader")
 const RayShadow := preload("res://src/ray_shadow.gd")
+const VehicleMaterials := preload("res://src/vehicle_materials.gd")
 
 var stage: Node3D
 var viewport: SubViewport
@@ -26,7 +27,7 @@ var external_input := false
 var _remote_keys: Dictionary = {}
 var _lighting := {
 	"key": 1.35, "azimuth": -42.0, "elevation": 46.0, "size": 14.0, "specular": 0.0,
-	"fill": 0.68, "ambient": 0.62, "exposure": 1.07, "floor_roughness": 0.43,
+	"fill": 0.42, "ambient": 0.24, "exposure": 1.07, "floor_roughness": 0.43,
 	"light_color": Color("#fff3e8"), "background_color": Color("#e9edf1"),
 }
 var camera: Camera3D
@@ -49,6 +50,7 @@ func _ready() -> void:
 	viewport.own_world_3d = true
 	viewport.render_target_update_mode = SubViewport.UPDATE_WHEN_VISIBLE
 	viewport.use_taa = true
+	viewport.positional_shadow_atlas_size = 4096
 	add_child(viewport)
 	RenderingServer.viewport_set_measure_render_time(viewport.get_viewport_rid(), true)
 	stage = Node3D.new()
@@ -95,7 +97,7 @@ func _add_environment() -> void:
 	environment = Environment.new()
 	environment.background_mode = Environment.BG_COLOR
 	environment.background_color = _lighting.background_color
-	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	environment.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	environment.ambient_light_color = Color("#e8edf4")
 	environment.ambient_light_energy = _lighting.ambient
 	environment.tonemap_mode = Environment.TONE_MAPPER_AGX
@@ -136,6 +138,9 @@ func _add_fill(location: Vector3, tint: Color, panel_size: Vector2, strength: fl
 	light.light_color = tint
 	light.area_range = 30.0
 	light.area_size = panel_size
+	light.shadow_enabled = true
+	light.shadow_bias = 0.045
+	light.shadow_normal_bias = 0.32
 	light.set_meta("strength", strength)
 	stage.add_child(light)
 	light.look_at(Vector3(0.0, 0.75, 0.0))
@@ -171,7 +176,7 @@ func set_effects(reflections: bool, occlusion: bool, bounced_light: bool, bloom:
 	environment.ssao_light_affect = 0.20
 	environment.ssil_enabled = bounced_light
 	environment.ssil_radius = 2.8
-	environment.ssil_intensity = 1.0
+	environment.ssil_intensity = 0.38
 	environment.glow_enabled = bloom
 	environment.glow_blend_mode = Environment.GLOW_BLEND_MODE_ADDITIVE
 	environment.glow_intensity = 0.14
@@ -227,7 +232,6 @@ func show_model(path: String) -> Dictionary:
 	if geometries.is_empty():
 		holder.free()
 		return {"error": "GLB 中没有网格。"}
-	_apply_vehicle_materials(geometries, state)
 	var bounds := AABB()
 	var initialized := false
 	for child: MeshInstance3D in geometries:
@@ -241,6 +245,7 @@ func show_model(path: String) -> Dictionary:
 		return {"error": "车辆的网格边界无效。"}
 	var center := bounds.get_center()
 	holder.position = Vector3(-center.x, -bounds.position.y + 0.012, -center.z)
+	VehicleMaterials.new().apply(geometries, state, path, 0.0)
 	var first_or_different := model == null or not is_equal_approx(_radius, bounds.size.length() / 2.0)
 	if model != null:
 		model.queue_free()
@@ -257,67 +262,6 @@ func show_model(path: String) -> Dictionary:
 	return {"meshes": geometries.size(), "size": bounds.size}
 
 
-
-# SixNG puts paint and part colours in COLOR_0. Its alpha channel marks
-# primary paint or stores the surface finish, so it is not opacity.
-func _apply_vehicle_materials(geometries: Array[Node], state: GLTFState) -> void:
-	var materials := state.get_materials()
-	var records: Array = state.json.get("materials", [])
-	var by_material: Dictionary = {}
-	for i in range(mini(materials.size(), records.size())):
-		var extras: Dictionary = records[i].get("extras", {})
-		var classification: Dictionary = extras.get("classification", {})
-		var kind: Variant = classification.get("stand_in")
-		if kind in ["parts", "rim", "rubber"]:
-			by_material[materials[i]] = kind
-	for mesh_node: MeshInstance3D in geometries:
-		var mesh := mesh_node.mesh
-		if mesh == null:
-			continue
-		for surface in range(mesh.get_surface_count()):
-			var original := mesh.surface_get_material(surface) as BaseMaterial3D
-			if original == null or not by_material.has(original):
-				continue
-			var colours: Variant = mesh.surface_get_arrays(surface)[Mesh.ARRAY_COLOR]
-			if not colours is PackedColorArray or colours.is_empty():
-				continue
-			var material := original.duplicate() as BaseMaterial3D
-			var kind: String = by_material[original]
-			if kind == "rubber":
-				# Tire vertex colours are the decoded rubber tint. Use RGB
-				# only, while retaining the original texture and normal map.
-				material.vertex_color_use_as_albedo = true
-				material.vertex_color_is_srgb = false
-			elif material.transparency == BaseMaterial3D.TRANSPARENCY_DISABLED:
-				material.vertex_color_use_as_albedo = true
-				material.vertex_color_is_srgb = false
-				_apply_surface_finish(material, colours, kind)
-			mesh_node.set_surface_override_material(surface, material)
-
-
-func _apply_surface_finish(material: BaseMaterial3D, colours: PackedColorArray, kind: String) -> void:
-	var sample_count := mini(colours.size(), 96)
-	var step := maxi(1, colours.size() / sample_count)
-	var codes: Dictionary = {}
-	for i in range(sample_count):
-		var code := roundi(colours[i * step].a * 255.0)
-		codes[code] = int(codes.get(code, 0)) + 1
-	for code: int in codes:
-		if int(codes[code]) * 5 < sample_count * 4:
-			continue
-		if code == 254:
-			# Use the decoded paint colour from the vertices and a
-			# neutral showroom finish for the clear coat.
-			material.albedo_texture = null
-			material.metallic = 0.43
-			material.roughness = 0.34
-			material.clearcoat_enabled = true
-			material.clearcoat = 0.57
-			material.clearcoat_roughness = 0.31
-		elif code < 200 and kind == "parts":
-			material.metallic = floorf(code / 50.0) / 3.0
-			material.roughness = clampf((code % 50) / 49.0, 0.05, 1.0)
-		return
 
 func clear_model() -> void:
 	_invalidate_ray_shadows()
