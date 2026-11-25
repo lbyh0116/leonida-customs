@@ -35,6 +35,7 @@ if ($RayTracing) {
     Install-Godot '4.8-beta5' 'tools/godot-preview' '253F11023A4FE21F5420E0DF038CE5446B79C501E1168B8178DF3D70A23F5553'
 }
 & (Join-Path $Root 'tools/install-sixng.ps1')
+& (Join-Path $Root 'Build-WinUI.ps1')
 if ($RayTracing) {
     Write-Host 'Setup complete. Run Start-Viewer-RayTracing.cmd or Start-Viewer.cmd.'
 } else {

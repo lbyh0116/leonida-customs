@@ -22,6 +22,8 @@ var _model_height := 1.0
 var _fill: Array[AreaLight3D] = []
 var _fly_speed := 4.0
 var _free_view := false
+var external_input := false
+var _remote_keys: Dictionary = {}
 var _lighting := {
 	"key": 1.35, "azimuth": -42.0, "elevation": 46.0, "size": 14.0, "specular": 0.0,
 	"fill": 0.68, "ambient": 0.62, "exposure": 1.07, "floor_roughness": 0.43,
@@ -124,12 +126,6 @@ func _add_environment() -> void:
 	var sky := Sky.new()
 	sky.sky_material = panorama
 	environment.sky = sky
-	environment.fog_enabled = true
-	environment.fog_light_color = environment.background_color
-	environment.fog_mode = Environment.FOG_MODE_DEPTH
-	environment.fog_depth_begin = 14.0
-	environment.fog_depth_end = 43.0
-	environment.fog_density = 1.0
 	world.environment = environment
 	stage.add_child(world)
 
@@ -199,10 +195,11 @@ func set_lighting(options: Dictionary) -> void:
 	environment.ambient_light_energy = options.ambient
 	environment.tonemap_exposure = options.exposure
 	environment.background_color = options.background_color
-	environment.fog_light_color = options.background_color
 	_floor_material.set_shader_parameter("surface_roughness", options.floor_roughness)
+	_floor_material.set_shader_parameter("backdrop_color", options.background_color)
 	if _ray_floor != null:
 		_ray_floor.set_shader_parameter("surface_roughness", options.floor_roughness)
+		_ray_floor.set_shader_parameter("backdrop_color", options.background_color)
 		_ray_floor.set_shader_parameter("shadow_strength", _shadow_strength())
 	if _ray_ready and (not previous_rotation.is_equal_approx(_key.rotation) or not is_equal_approx(previous_size, _key.light_angular_distance)):
 		_ray_timer.start()
@@ -398,9 +395,12 @@ func set_free_view(active: bool) -> void:
 	_free_view = active
 	if active:
 		_fly_speed = clampf(_radius * 1.5, 1.0, 20.0)
-		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		if not external_input:
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	else:
-		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		_remote_keys.clear()
+		if not external_input:
+			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		var back := camera.global_basis.z
 		_yaw = atan2(back.x, back.z)
 		_pitch = asin(clampf(back.y, -1.0, 1.0))
@@ -409,24 +409,25 @@ func set_free_view(active: bool) -> void:
 
 
 func _aspect_framing() -> float:
-	return maxf(1.0, 0.98 / maxf(0.1, size.x / maxf(size.y, 1.0)))
+	var area := Vector2(viewport.size) if external_input else size
+	return maxf(1.0, 0.98 / maxf(0.1, area.x / maxf(area.y, 1.0)))
 
 
 func _move_free_camera(delta: float) -> void:
 	var move := Vector3.ZERO
-	if Input.is_physical_key_pressed(KEY_W): move -= camera.basis.z
-	if Input.is_physical_key_pressed(KEY_S): move += camera.basis.z
-	if Input.is_physical_key_pressed(KEY_A): move -= camera.basis.x
-	if Input.is_physical_key_pressed(KEY_D): move += camera.basis.x
-	if Input.is_physical_key_pressed(KEY_E): move += Vector3.UP
-	if Input.is_physical_key_pressed(KEY_Q): move += Vector3.DOWN
+	if _key_held(KEY_W): move -= camera.basis.z
+	if _key_held(KEY_S): move += camera.basis.z
+	if _key_held(KEY_A): move -= camera.basis.x
+	if _key_held(KEY_D): move += camera.basis.x
+	if _key_held(KEY_E): move += Vector3.UP
+	if _key_held(KEY_Q): move += Vector3.DOWN
 	if move.length_squared() > 0.0:
-		var boost := 3.0 if Input.is_physical_key_pressed(KEY_SHIFT) else 1.0
+		var boost := 3.0 if _key_held(KEY_SHIFT) else 1.0
 		camera.position += move.normalized() * _fly_speed * boost * delta
 
 
 func _input(event: InputEvent) -> void:
-	if not _free_view:
+	if not _free_view or external_input:
 		return
 	if event is InputEventMouseMotion:
 		camera.rotation.y -= event.screen_relative.x * 0.0028
@@ -444,7 +445,7 @@ func _input(event: InputEvent) -> void:
 
 
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_APPLICATION_FOCUS_OUT and _free_view:
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT and _free_view and not external_input:
 		set_free_view(false)
 
 
@@ -530,6 +531,7 @@ func _on_ray_ready(ok: bool, request: int) -> void:
 		_ray_floor.shader = shader
 	_ray_floor.set_shader_parameter("ray_shadow", _ray_trace.texture)
 	_ray_floor.set_shader_parameter("surface_roughness", _floor_material.get_shader_parameter("surface_roughness"))
+	_ray_floor.set_shader_parameter("backdrop_color", _floor_material.get_shader_parameter("backdrop_color"))
 	_ray_floor.set_shader_parameter("show_grid", _floor_material.get_shader_parameter("show_grid"))
 	_ray_floor.set_shader_parameter("shadow_strength", _shadow_strength())
 	_ray_ready = true
@@ -566,6 +568,42 @@ func _update_ray_shadows() -> void:
 
 func _exit_tree() -> void:
 	if _free_view:
-		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		_remote_keys.clear()
+		if not external_input:
+			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	if _ray_trace != null:
 		_ray_trace.release()
+
+
+func _key_held(key: Key) -> bool:
+	return _remote_keys.has(key) if external_input else Input.is_physical_key_pressed(key)
+
+
+func remote_camera_input(action: String, data: Dictionary) -> void:
+	if model == null:
+		return
+	match action:
+		"key":
+			var key := int({"W": KEY_W, "A": KEY_A, "S": KEY_S, "D": KEY_D, "Q": KEY_Q, "E": KEY_E, "Shift": KEY_SHIFT}.get(data.key, KEY_NONE)) as Key
+			if data.pressed and _free_view:
+				_remote_keys[key] = true
+			else:
+				_remote_keys.erase(key)
+		"motion":
+			var motion := Vector2(data.x, data.y)
+			if _free_view:
+				camera.rotation.y -= motion.x * 0.0028
+				camera.rotation.x = clampf(camera.rotation.x - motion.y * 0.0028, -1.54, 1.54)
+			else:
+				var event := InputEventMouseMotion.new()
+				event.relative = motion
+				event.button_mask = int(data.buttons) as MouseButtonMask
+				_gui_input(event)
+		"wheel":
+			if _free_view:
+				_fly_speed = clampf(_fly_speed * (1.22 if data.up else 1.0 / 1.22), 0.35, 65.0)
+			else:
+				var event := InputEventMouseButton.new()
+				event.button_index = MOUSE_BUTTON_WHEEL_UP if data.up else MOUSE_BUTTON_WHEEL_DOWN
+				event.pressed = true
+				_gui_input(event)

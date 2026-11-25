@@ -1,0 +1,198 @@
+<Window x:Class="VehicleStudio.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid x:Name="Shell" Background="#F3F5F8" RequestedTheme="Light"
+          Loaded="ShellLoaded" Padding="15" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Grid ColumnSpacing="13">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Border Width="47" Height="47" CornerRadius="12" Background="#8C3C54">
+                <TextBlock Text="VI" FontSize="22" FontWeight="Bold" Foreground="White"
+                           VerticalAlignment="Center" HorizontalAlignment="Center" />
+            </Border>
+            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                <TextBlock Text="GTA VI 载具预览器" FontSize="23" FontWeight="SemiBold" Foreground="#1B2330" />
+                <TextBlock x:Name="SourceSummary" Text="等待连接本地游戏目录" Foreground="#535D6C" FontSize="12" />
+            </StackPanel>
+            <Button x:Name="OpenFolder" Grid.Column="2" Click="OpenFolderClicked"
+                    VerticalAlignment="Center" Content="打开游戏目录" />
+        </Grid>
+
+        <Grid Grid.Row="1" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="235" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="285" />
+            </Grid.ColumnDefinitions>
+
+            <Border Background="White" CornerRadius="9" BorderBrush="#E0E4EB" BorderThickness="1" Padding="12">
+                <Grid RowSpacing="9">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid>
+                        <TextBlock Text="载具库" FontSize="16" FontWeight="SemiBold" />
+                        <TextBlock x:Name="VehicleCount" HorizontalAlignment="Right" Foreground="#606B7D" Text="0" />
+                    </Grid>
+                    <TextBox Grid.Row="1" x:Name="Search" PlaceholderText="搜索车型、厂牌或 ID" TextChanged="SearchChanged" />
+                    <ComboBox Grid.Row="2" x:Name="Category" HorizontalAlignment="Stretch"
+                              SelectionChanged="FilterChanged" AutomationProperties.Name="载具类别" />
+                    <ListView Grid.Row="3" x:Name="VehicleList" SelectionMode="Single" SelectionChanged="VehicleSelected">
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Margin="0,3">
+                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding Subtitle}" FontSize="11" Foreground="#657184" TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                    <TextBlock Grid.Row="4" x:Name="CatalogNote" TextWrapping="Wrap" FontSize="11" Foreground="#657184" />
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="1" Background="White" CornerRadius="9"
+                    BorderBrush="#E0E4EB" BorderThickness="1">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid Padding="15,10">
+                        <StackPanel>
+                            <TextBlock x:Name="ViewTitle" Text="白色摄影棚" FontSize="21" FontWeight="SemiBold" />
+                            <TextBlock x:Name="ViewSubtitle" Text="选择载具即可预览" Foreground="#566478" FontSize="12" />
+                        </StackPanel>
+                        <TextBlock x:Name="GpuTime" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                   Foreground="#566478" FontSize="11" />
+                    </Grid>
+                    <Grid Grid.Row="1" x:Name="PreviewSurface" Margin="1,0" Background="#E9EDF1">
+                        <Image x:Name="PreviewImage" Stretch="Uniform" IsHitTestVisible="False" />
+                    </Grid>
+                    <Grid Grid.Row="2" Padding="10,8" ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Orientation="Horizontal" Spacing="5" x:Name="CameraToolbar">
+                            <Button Content="重置" Click="ResetCamera" ToolTipService.ToolTip="重置视角" />
+                            <ToggleButton x:Name="Rotate" Content="旋转" Click="ToggleCamera" Tag="rotate" />
+                            <ToggleButton x:Name="GridLines" Content="网格" Click="ToggleCamera" Tag="grid" />
+                            <ToggleButton x:Name="Fly" Content="自由视角" Click="ToggleCamera" Tag="free" />
+                        </StackPanel>
+                        <TextBlock Grid.Column="1" x:Name="CameraHint" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis" FontSize="11" Foreground="#566478"
+                                   Text="拖动旋转 · 右键平移 · 滚轮缩放" />
+                    </Grid>
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="2" Background="White" CornerRadius="9" BorderBrush="#E0E4EB" BorderThickness="1" Padding="10">
+                <Pivot>
+                    <PivotItem Header="车辆配置" Margin="0,6,0,0">
+                        <Grid x:Name="VehicleOptions" RowSpacing="10">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <ScrollViewer HorizontalScrollMode="Disabled">
+                                <StackPanel Spacing="9" Padding="4,0,5,0">
+                                    <TextBlock Text="原厂配置" FontWeight="SemiBold" />
+                                    <ComboBox x:Name="Factory" HorizontalAlignment="Stretch"
+                                              AutomationProperties.Name="原厂配置" />
+                                    <Grid Margin="0,6,0,0">
+                                        <TextBlock Text="改装配件" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                        <Button x:Name="ReadParts" Content="读取配件" HorizontalAlignment="Right" Click="ReadPartsClicked" />
+                                    </Grid>
+                                    <TextBlock x:Name="PartsNote" Text="选择载具后可查看可用配件。" FontSize="12"
+                                               TextWrapping="Wrap" Foreground="#566478" />
+                                    <StackPanel x:Name="PartsPanel" Spacing="9" />
+                                </StackPanel>
+                            </ScrollViewer>
+                            <StackPanel Grid.Row="1" Spacing="6" Padding="3,0">
+                                <Button x:Name="Apply" Content="更新预览" Click="ApplyClicked"
+                                        HorizontalAlignment="Stretch" Style="{StaticResource AccentButtonStyle}" />
+                                <Grid ColumnSpacing="6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Button x:Name="CopyCode" Content="复制改车码" HorizontalAlignment="Stretch" Click="CopyClicked" />
+                                    <Button x:Name="ImportCode" Grid.Column="1" Content="导入改车码" HorizontalAlignment="Stretch" Click="ImportClicked" />
+                                </Grid>
+                            </StackPanel>
+                        </Grid>
+                    </PivotItem>
+                    <PivotItem Header="渲染设置" Margin="0,6,0,0">
+                        <ScrollViewer HorizontalScrollMode="Disabled">
+                            <StackPanel x:Name="RenderPanel" Spacing="9" Padding="4,0,6,8">
+                                <TextBlock Text="画质" FontWeight="SemiBold" />
+                                <ComboBox x:Name="Preset" HorizontalAlignment="Stretch"
+                                          SelectionChanged="PresetChanged" AutomationProperties.Name="画质预设">
+                                    <x:String>摄影棚 · 高画质</x:String>
+                                    <x:String>平衡 · FSR 2.2 质量</x:String>
+                                    <x:String>流畅 · FSR 2.2 性能</x:String>
+                                </ComboBox>
+                                <ComboBox x:Name="Antialias" HorizontalAlignment="Stretch"
+                                          SelectionChanged="QualityChanged" AutomationProperties.Name="抗锯齿">
+                                    <x:String>关闭抗锯齿</x:String>
+                                    <x:String>FXAA</x:String>
+                                    <x:String>SMAA</x:String>
+                                    <x:String>TAA</x:String>
+                                    <x:String>MSAA 2×</x:String>
+                                    <x:String>MSAA 4×</x:String>
+                                    <x:String>MSAA 8×</x:String>
+                                    <x:String>FSR 2.2</x:String>
+                                </ComboBox>
+                                <Slider x:Name="Scale" Header="3D 渲染比例（%）" Minimum="50" Maximum="100"
+                                        StepFrequency="1" Value="100" ValueChanged="QualityChanged" />
+                                <CheckBox x:Name="Ssr" Content="屏幕空间反射 SSR" Click="QualityChanged" />
+                                <CheckBox x:Name="Ao" Content="环境光遮蔽 SSAO" Click="QualityChanged" />
+                                <CheckBox x:Name="Ssil" Content="间接光照 SSIL" Click="QualityChanged" />
+                                <CheckBox x:Name="Bloom" Content="高光辉光" Click="QualityChanged" />
+                                <TextBlock Text="硬件光追阴影" FontWeight="SemiBold" Margin="0,8,0,0" />
+                                <CheckBox x:Name="Ray" Content="车辆投影到地面" Click="QualityChanged" />
+                                <ComboBox x:Name="Samples" HorizontalAlignment="Stretch"
+                                          SelectionChanged="QualityChanged" AutomationProperties.Name="光追采样数">
+                                    <x:String>8 条光线 / 采样点</x:String>
+                                    <x:String>16 条光线 / 采样点</x:String>
+                                    <x:String>32 条光线 / 采样点</x:String>
+                                    <x:String>64 条光线 / 采样点</x:String>
+                                </ComboBox>
+                                <TextBlock x:Name="RayStatus" TextWrapping="Wrap" FontSize="11" Foreground="#566478" />
+                                <TextBlock Text="灯光" FontWeight="SemiBold" Margin="0,8,0,0" />
+                                <StackPanel x:Name="LightingPanel" Spacing="6" />
+                                <Button Content="重置灯光" Click="ResetLighting" HorizontalAlignment="Stretch" />
+                            </StackPanel>
+                        </ScrollViewer>
+                    </PivotItem>
+                </Pivot>
+            </Border>
+        </Grid>
+
+        <Grid Grid.Row="2" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="Status" Text="正在启动渲染器…" TextTrimming="CharacterEllipsis" Foreground="#4B5668" FontSize="12" />
+            <ProgressBar x:Name="Progress" Grid.Column="1" Width="150" VerticalAlignment="Center" Visibility="Collapsed" />
+            <TextBlock x:Name="MeshDetails" Grid.Column="2" Foreground="#4B5668" FontSize="12" />
+        </Grid>
+    </Grid>
+</Window>

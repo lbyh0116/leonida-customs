@@ -1,21 +1,12 @@
 @echo off
 setlocal
 set "VIEWER_ROOT=%~dp0"
-set "VIEWER_GODOT=%VIEWER_ROOT%tools\godot\Godot_v4.7.2-stable_win64.exe"
-set "VIEWER_LOG=viewer.log"
-if defined GTA6_VIEWER_RT (
-    set "VIEWER_GODOT=%VIEWER_ROOT%tools\godot-preview\Godot_v4.8-beta5_win64.exe"
-    set "VIEWER_LOG=viewer-raytracing.log"
-)
-if not exist "%VIEWER_GODOT%" (
-    if defined GTA6_VIEWER_RT (
-        echo The Godot ray-tracing build is missing. Run setup.ps1 -RayTracing first.
-    ) else (
-        echo Godot is missing. Run setup.ps1 first.
-    )
+set "VIEWER_APP=%VIEWER_ROOT%work\winui\bin\VehicleStudio\release_win-x64\VehicleStudio.exe"
+set "VIEWER_MODE="
+if defined GTA6_VIEWER_RT set "VIEWER_MODE=--ray-tracing"
+if not exist "%VIEWER_APP%" (
+    echo The WinUI application is missing. Run setup.ps1 first.
     pause
     exit /b 1
 )
-if not exist "%VIEWER_ROOT%work" mkdir "%VIEWER_ROOT%work"
-if not exist "%VIEWER_ROOT%work\.gdignore" type nul > "%VIEWER_ROOT%work\.gdignore"
-start "" "%VIEWER_GODOT%" --path "%VIEWER_ROOT%." --log-file "%VIEWER_ROOT%work\%VIEWER_LOG%" -- %*
+start "" /d "%VIEWER_ROOT%." "%VIEWER_APP%" %VIEWER_MODE% %*
