@@ -1,0 +1,10 @@
+/.godot/
+/work/
+/tools/*
+!/tools/.gdignore
+!/tools/install-sixng.ps1
+/build/
+*.glb
+*.gltf
+*.rpf
+*.ttpf
