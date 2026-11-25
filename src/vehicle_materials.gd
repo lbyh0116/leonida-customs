@@ -15,22 +15,28 @@ func apply(geometries: Array[Node], state: GLTFState, path: String, vehicle_midl
 	var materials := state.get_materials()
 	var records: Array = state.json.get("materials", [])
 	var by_material: Dictionary = {}
-	var brake_extents: Array[AABB] = []
+	var wheel_nodes: Dictionary = {}
+	var wheel_extents: Dictionary = {}
+	var wheels_with_brakes: Dictionary = {}
 	var backed_wheels: Dictionary = {}
 	for i in range(mini(materials.size(), records.size())):
 		if materials[i] != null:
 			by_material[materials[i]] = records[i].get("extras", {})
 	for node: MeshInstance3D in geometries:
-		if node.mesh == null:
+		# Godot's imported mesh-node names keep SixNG's wheel and geometry
+		# labels, with the original '@' and '/' replaced by underscores.
+		var name := str(node.name).to_lower()
+		var tag := name.rfind("_wheel_")
+		var end := name.find("_geom", tag + 7) if tag >= 0 else -1
+		if end < 0:
 			continue
-		for surface in range(node.mesh.get_surface_count()):
-			var surface_material := node.mesh.surface_get_material(surface)
-			if surface_material == null:
-				continue
-			var name := surface_material.resource_name.get_slice("/", 0).to_lower()
-			if name.begins_with("brakedisc_") or name.begins_with("drumbrake_"):
-				brake_extents.append(node.global_transform * node.get_aabb())
-				break
+		var wheel := name.substr(tag + 1, end - tag - 1)
+		wheel_nodes[node] = wheel
+		if name.begins_with("rim_"):
+			var extent: AABB = node.global_transform * node.get_aabb()
+			wheel_extents[wheel] = wheel_extents[wheel].merge(extent) if wheel_extents.has(wheel) else extent
+		elif name.begins_with("brakedisc_") or name.begins_with("drumbrake_"):
+			wheels_with_brakes[wheel] = true
 	for node: MeshInstance3D in geometries:
 		var mesh := node.mesh
 		if mesh == null:
@@ -52,14 +58,15 @@ func apply(geometries: Array[Node], state: GLTFState, path: String, vehicle_midl
 				continue
 			var colours: Variant = mesh.surface_get_arrays(surface)[Mesh.ARRAY_COLOR]
 			var has_colours: bool = colours is PackedColorArray and not colours.is_empty()
-			if kind == "rim":
-				var wheel_extent: AABB = node.global_transform * node.get_aabb()
+			var wheel: String = wheel_nodes.get(node, "")
+			if kind == "rim" and wheel_extents.has(wheel):
+				var wheel_extent: AABB = wheel_extents[wheel]
 				# A centered wheel can be exposed on both sides, as on motorcycles.
 				if absf(wheel_extent.get_center().x - vehicle_midline) > 0.25 and wheel_extent.size.x > 0.025:
 					node.set_surface_override_material(surface, _rim_material(original, occlusion, wheel_extent, vehicle_midline, has_colours))
-					if not backed_wheels.has(node):
-						backed_wheels[node] = true
-						_add_missing_wheel_backing(node, wheel_extent, vehicle_midline, brake_extents)
+					if not wheels_with_brakes.has(wheel) and not backed_wheels.has(wheel):
+						backed_wheels[wheel] = true
+						_add_missing_wheel_backing(node, wheel_extent, vehicle_midline)
 					continue
 			var material := original.duplicate() as BaseMaterial3D
 			if occlusion != null:
@@ -136,12 +143,8 @@ static func _rim_material(original: BaseMaterial3D, occlusion: Texture2D, extent
 
 # With a missing disc or drum, the floor can be visible straight through
 # the rim. A recessed, matte backing represents the closed wheel cavity.
-static func _add_missing_wheel_backing(node: MeshInstance3D, extent: AABB, midline: float, brakes: Array[AABB]) -> void:
+static func _add_missing_wheel_backing(node: MeshInstance3D, extent: AABB, midline: float) -> void:
 	var center := extent.get_center()
-	for brake in brakes:
-		var brake_center := brake.get_center()
-		if brake_center.distance_to(center) <= maxf(extent.size.x, 0.18):
-			return
 	var radius := minf(extent.size.y, extent.size.z) * 0.5
 	if radius < 0.09:
 		return
