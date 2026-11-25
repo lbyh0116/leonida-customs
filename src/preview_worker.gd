@@ -129,6 +129,8 @@ func _handle(request: Dictionary) -> void:
 					continue
 				lighting[key] = Color.from_string(str(data[key]), lighting[key]) if lighting[key] is Color else float(data[key])
 			_stage.set_lighting(lighting)
+		"paint":
+			_stage.set_paint(int(data.get("finish", 0)), str(data.get("color", "")))
 		"camera":
 			match str(data.action):
 				"reset": _stage.reset_camera()
@@ -170,7 +172,7 @@ func _run_asset_command(command: String, data: Dictionary) -> Dictionary:
 				return {"ok": false, "error": asset.error}
 			var size: Vector3 = asset.size
 			return {
-				"ok": true, "meshes": asset.meshes, "size": [size.x, size.y, size.z],
+				"ok": true, "meshes": asset.meshes, "size": [size.x, size.y, size.z], "paintable": asset.paintable,
 				"issues": int(result.asset.get("issues", 0)), "base": result.asset.get("base", false)
 			}
 	return {"ok": false, "error": "未知的资源命令。"}

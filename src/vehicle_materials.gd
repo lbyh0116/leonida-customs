@@ -1,13 +1,17 @@
 extends RefCounted
 
 const RIM_SHADER := preload("res://src/vehicle_rim.gdshader")
+const BODY_SHADER := preload("res://src/vehicle_body.gdshader")
 const VEHICLE_OCCLUSION_SLOT := "2bb2ede8"
 
+var painted_surfaces: Array[ShaderMaterial] = []
+static var _cutout_shader: Shader
 var _texture_roots: PackedStringArray
 var _textures: Dictionary = {}
 
 
-func apply(geometries: Array[Node], state: GLTFState, path: String, vehicle_midline: float) -> void:
+func apply(geometries: Array[Node], state: GLTFState, path: String, bounds: AABB) -> void:
+	var vehicle_midline := bounds.get_center().x
 	var directory := path.get_base_dir()
 	for i in range(4):
 		_texture_roots.append(directory)
@@ -68,6 +72,11 @@ func apply(geometries: Array[Node], state: GLTFState, path: String, vehicle_midl
 						backed_wheels[wheel] = true
 						_add_missing_wheel_backing(node, wheel_extent, vehicle_midline)
 					continue
+			if kind == "parts" and has_colours and original.transparency in [BaseMaterial3D.TRANSPARENCY_DISABLED, BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR]:
+				var body := _body_material(original, occlusion, bounds)
+				node.set_surface_override_material(surface, body)
+				_track_primary_paint(body, colours)
+				continue
 			var material := original.duplicate() as BaseMaterial3D
 			if occlusion != null:
 				# SixNG documents the blue channel as occlusion on both
@@ -90,11 +99,41 @@ func apply(geometries: Array[Node], state: GLTFState, path: String, vehicle_midl
 			if kind in ["parts", "rim", "rubber"] and has_colours and material.transparency == BaseMaterial3D.TRANSPARENCY_DISABLED:
 				material.vertex_color_use_as_albedo = true
 				material.vertex_color_is_srgb = false
-				if kind == "parts":
-					_apply_surface_finish(material, colours)
 			node.set_surface_override_material(surface, material)
 	_textures.clear()
 	_texture_roots.clear()
+
+
+func _track_primary_paint(material: ShaderMaterial, colours: PackedColorArray) -> void:
+	for colour in colours:
+		if roundi(colour.a * 255.0) == 254:
+			painted_surfaces.append(material)
+			return
+
+
+static func _body_material(original: BaseMaterial3D, occlusion: Texture2D, bounds: AABB) -> ShaderMaterial:
+	var material := ShaderMaterial.new()
+	if original.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR:
+		if _cutout_shader == null:
+			_cutout_shader = Shader.new()
+			_cutout_shader.code = BODY_SHADER.code.replace("shader_type spatial;", "shader_type spatial;\n#define VEHICLE_CUTOUT")
+		material.shader = _cutout_shader
+		material.set_shader_parameter("alpha_cutoff", original.alpha_scissor_threshold)
+	else:
+		material.shader = BODY_SHADER
+	material.set_shader_parameter("front_bounds", Vector3(bounds.position.z, maxf(0.01, bounds.size.z), maxf(0.01, bounds.end.y)))
+	material.set_shader_parameter("base_tint", original.albedo_color)
+	material.set_shader_parameter("base_metallic", original.metallic)
+	material.set_shader_parameter("base_roughness", original.roughness)
+	if original.albedo_texture != null:
+		material.set_shader_parameter("base_map", original.albedo_texture)
+	if occlusion != null:
+		material.set_shader_parameter("occlusion_map", occlusion)
+	if original.normal_texture != null:
+		material.set_shader_parameter("normal_map", original.normal_texture)
+		material.set_shader_parameter("use_normal_map", true)
+		material.set_shader_parameter("normal_scale", original.normal_scale)
+	return material
 
 
 func _vehicle_occlusion(extras: Dictionary) -> Texture2D:
@@ -168,28 +207,3 @@ static func _add_missing_wheel_backing(node: MeshInstance3D, extent: AABB, midli
 	backing.material_override = backing_material
 	node.add_child(backing)
 	backing.global_transform = Transform3D(Basis(Vector3.FORWARD, PI * 0.5), center)
-
-
-# SixNG puts paint and part colours in COLOR_0. Its alpha channel marks
-# primary paint or stores the surface finish, so it is not opacity.
-static func _apply_surface_finish(material: BaseMaterial3D, colours: PackedColorArray) -> void:
-	var sample_count := mini(colours.size(), 96)
-	var step := maxi(1, colours.size() / sample_count)
-	var codes: Dictionary = {}
-	for i in range(sample_count):
-		var code := roundi(colours[i * step].a * 255.0)
-		codes[code] = int(codes.get(code, 0)) + 1
-	for code: int in codes:
-		if int(codes[code]) * 5 < sample_count * 4:
-			continue
-		if code == 254:
-			material.albedo_texture = null
-			material.metallic = 0.43
-			material.roughness = 0.34
-			material.clearcoat_enabled = true
-			material.clearcoat = 0.57
-			material.clearcoat_roughness = 0.31
-		elif code < 200:
-			material.metallic = floorf(code / 50.0) / 3.0
-			material.roughness = clampf((code % 50) / 49.0, 0.05, 1.0)
-		return

@@ -114,6 +114,16 @@
                                     <TextBlock Text="原厂配置" FontWeight="SemiBold" />
                                     <ComboBox x:Name="Factory" HorizontalAlignment="Stretch"
                                               AutomationProperties.Name="原厂配置" />
+                                    <ComboBox x:Name="PaintFinish" Header="车漆预览" HorizontalAlignment="Stretch"
+                                              SelectedIndex="0" IsEnabled="False">
+                                        <x:String>原厂漆面</x:String>
+                                        <x:String>亮光实色</x:String>
+                                        <x:String>金属漆</x:String>
+                                        <x:String>哑光</x:String>
+                                        <x:String>珠光</x:String>
+                                    </ComboBox>
+                                    <TextBox x:Name="PaintColor" Header="自定义漆色" PlaceholderText="原车颜色或 #RRGGBB"
+                                             MaxLength="7" IsEnabled="False" />
                                     <Grid Margin="0,6,0,0">
                                         <TextBlock Text="改装配件" FontWeight="SemiBold" VerticalAlignment="Center" />
                                         <Button x:Name="ReadParts" Content="读取配件" HorizontalAlignment="Right" Click="ReadPartsClicked" />
@@ -160,7 +170,7 @@
                                 </ComboBox>
                                 <Slider x:Name="Scale" Header="3D 渲染比例（%）" Minimum="50" Maximum="100"
                                         StepFrequency="1" Value="100" ValueChanged="QualityChanged" />
-                                <CheckBox x:Name="Ssr" Content="屏幕空间反射 SSR" Click="QualityChanged" />
+                                <CheckBox x:Name="Ssr" Content="反射 · SSR 与地板倒影" Click="QualityChanged" />
                                 <CheckBox x:Name="Ao" Content="环境光遮蔽 SSAO" Click="QualityChanged" />
                                 <CheckBox x:Name="Ssil" Content="间接光照 SSIL" Click="QualityChanged" />
                                 <CheckBox x:Name="Bloom" Content="高光辉光" Click="QualityChanged" />

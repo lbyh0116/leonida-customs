@@ -19,6 +19,7 @@ public sealed partial class MainWindow : Window
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly Regex ModelPattern = new("^[a-z0-9_]{1,80}$", RegexOptions.CultureInvariant);
     private static readonly Regex PartPattern = new("^[0-9a-f]{8}$", RegexOptions.CultureInvariant);
+    private static readonly Regex ColorPattern = new("^#[0-9a-fA-F]{6}$", RegexOptions.CultureInvariant);
     private static readonly string[] Arguments = Environment.GetCommandLineArgs();
     private readonly RendererClient renderer = new();
     private readonly List<ComboBox> partChoices = new();
@@ -36,6 +37,7 @@ public sealed partial class MainWindow : Window
     private bool populating;
     private bool partsLoaded;
     private bool rayAvailable;
+    private bool paintable;
     private bool closing;
     private Point? pointerPosition;
     private readonly HashSet<VirtualKey> heldKeys = new();
@@ -43,6 +45,13 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        PaintFinish.SelectionChanged += async (_, _) => await UpdatePaintAsync();
+        PaintColor.LostFocus += async (_, _) => await UpdatePaintAsync();
+        PaintColor.KeyDown += async (_, args) =>
+        {
+            if (args.Key == VirtualKey.Enter)
+                await UpdatePaintAsync();
+        };
         PreviewSurface.SizeChanged += async (_, _) => await ResizePreviewAsync();
         PreviewSurface.PointerPressed += (sender, args) =>
         {
@@ -238,6 +247,7 @@ public sealed partial class MainWindow : Window
             vehicles = response.GetProperty("vehicles").Deserialize<List<Vehicle>>(JsonOptions) ?? [];
             selected = null;
             displayed = null;
+            paintable = false;
             ViewTitle.Text = "白色摄影棚";
             ViewSubtitle.Text = "选择载具即可预览";
             MeshDetails.Text = "";
@@ -376,12 +386,27 @@ public sealed partial class MainWindow : Window
         var size = reply.GetProperty("size").EnumerateArray().Select(d => d.GetDouble()).ToArray();
         var issues = reply.GetProperty("issues").GetInt32();
         var baseModel = reply.GetProperty("base").GetBoolean();
+        paintable = reply.GetProperty("paintable").GetBoolean();
         displayed = baseModel ? null : new BuildCode(vehicle.Id, config, parts.Order(StringComparer.Ordinal).ToArray());
         ViewTitle.Text = vehicle.Name;
         ViewSubtitle.Text = $"{vehicle.Category}  ·  {vehicle.Subtitle}";
         MeshDetails.Text = $"{reply.GetProperty("meshes").GetInt32()} 组网格 · {size[0]:F2} × {size[1]:F2} × {size[2]:F2} m";
         Report((baseModel ? "已载入基础模型" : "已载入整车预览")
             + (issues > 0 ? $" · SixNG 报告 {issues} 项配件或贴图警告" : ""));
+    }
+
+    private Task UpdatePaintAsync()
+    {
+        PaintColor.IsEnabled = PaintFinish.IsEnabled && PaintFinish.SelectedIndex > 0;
+        if (!PaintFinish.IsEnabled)
+            return Task.CompletedTask;
+        var color = PaintColor.Text.Trim();
+        if (PaintColor.IsEnabled && color.Length > 0 && !ColorPattern.IsMatch(color))
+        {
+            Report("漆色请输入 #RRGGBB，留空使用原车颜色。", error: true);
+            return Task.CompletedTask;
+        }
+        return PostAsync("paint", new { finish = PaintFinish.SelectedIndex, color });
     }
 
     private void CopyClicked(object sender, RoutedEventArgs args)
@@ -560,7 +585,7 @@ public sealed partial class MainWindow : Window
         AddLightSlider("主光高度（°）", "elevation", 15, 85, 1);
         AddLightSlider("主光角直径（°）", "size", 0, 40, .5);
         AddLightSlider("主光高光", "specular", 0, .5, .005);
-        AddLightSlider("柔光强度", "fill", 0, 1.5, .01);
+        AddLightSlider("顶灯强度", "fill", 0, 1.5, .01);
         AddLightSlider("环境光", "ambient", 0, 1.5, .02);
         AddLightSlider("曝光", "exposure", .35, 2.7, .025);
         AddLightSlider("地面粗糙度", "floor_roughness", .08, .90, .01);
@@ -647,6 +672,8 @@ public sealed partial class MainWindow : Window
         OpenFolder.IsEnabled = connected && !busy;
         VehicleList.IsEnabled = connected && !busy;
         Factory.IsEnabled = !busy && selected?.Configurations.Count > 0;
+        PaintFinish.IsEnabled = connected && !busy && paintable;
+        PaintColor.IsEnabled = PaintFinish.IsEnabled && PaintFinish.SelectedIndex > 0;
         Apply.IsEnabled = !busy && selected is not null;
         ReadParts.IsEnabled = !busy && !partsLoaded && selected?.Configurations.Count > 0;
         CopyCode.IsEnabled = !busy && displayed is not null;

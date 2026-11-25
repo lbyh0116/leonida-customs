@@ -4,8 +4,12 @@ signal free_view_changed(active: bool)
 signal ray_status_changed(message: String)
 
 const FLOOR_SHADER := preload("res://src/render_studio_floor.gdshader")
+const STRIP_SHADER := preload("res://src/studio_strip.gdshader")
 const RayShadow := preload("res://src/ray_shadow.gd")
 const VehicleMaterials := preload("res://src/vehicle_materials.gd")
+const STRIP_SIZE := Vector2(0.24, 7.2)
+const STRIP_HEIGHT := 3.35
+const STRIP_OFFSETS := [-2.35, -0.78, 0.78, 2.35]
 
 var stage: Node3D
 var viewport: SubViewport
@@ -21,13 +25,20 @@ var _ray_samples := 16
 var _ray_request := 0
 var _model_height := 1.0
 var _fill: Array[AreaLight3D] = []
+var _strip_material: ShaderMaterial
+var _mirror_view: SubViewport
+var _mirror_camera: Camera3D
+var _reflections := true
+var _painted_surfaces: Array[ShaderMaterial] = []
+var _paint_finish := 0
+var _paint_color := ""
 var _fly_speed := 4.0
 var _free_view := false
 var external_input := false
 var _remote_keys: Dictionary = {}
 var _lighting := {
-	"key": 1.35, "azimuth": -42.0, "elevation": 46.0, "size": 14.0, "specular": 0.0,
-	"fill": 0.42, "ambient": 0.24, "exposure": 1.07, "floor_roughness": 0.43,
+	"key": 0.88, "azimuth": -42.0, "elevation": 65.0, "size": 6.0, "specular": 0.0,
+	"fill": 0.70, "ambient": 0.16, "exposure": 1.07, "floor_roughness": 0.15,
 	"light_color": Color("#fff3e8"), "background_color": Color("#e9edf1"),
 }
 var camera: Camera3D
@@ -64,8 +75,7 @@ func _ready() -> void:
 	_key.light_angular_distance = _lighting.size
 	_key.directional_shadow_max_distance = 38.0
 	stage.add_child(_key)
-	_add_fill(Vector3(5, 3.6, -4), Color("#d0e0ff"), Vector2(3.4, 1.2), 1.0)
-	_add_fill(Vector3(-4, 2.5, 2), Color("#fff4e8"), Vector2(2.4, 1.5), 0.69)
+	_add_strips()
 	var floor_mesh := PlaneMesh.new()
 	floor_mesh.size = Vector2(400, 400)
 	_floor_material = ShaderMaterial.new()
@@ -73,6 +83,7 @@ func _ready() -> void:
 	floor_surface = MeshInstance3D.new()
 	floor_surface.mesh = floor_mesh
 	floor_surface.material_override = _floor_material
+	floor_surface.layers = 2
 	floor_surface.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	stage.add_child(floor_surface)
 	_set_floor(false)
@@ -86,6 +97,7 @@ func _ready() -> void:
 	camera.near = 0.04
 	camera.far = 500
 	stage.add_child(camera)
+	_add_floor_reflection()
 	viewport.size_changed.connect(_move_camera)
 	set_lighting(_lighting)
 	set_effects(true, true, true, true)
@@ -103,24 +115,19 @@ func _add_environment() -> void:
 	environment.tonemap_mode = Environment.TONE_MAPPER_AGX
 	environment.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	var image := Image.create_empty(512, 256, false, Image.FORMAT_RGBAH)
-	var panels := [
-		Vector4(0.07, 0.31, 0.105, 0.041),
-		Vector4(0.32, 0.21, 0.061, 0.080),
-		Vector4(0.58, 0.40, 0.043, 0.051),
-		Vector4(0.80, 0.32, 0.083, 0.023),
-	]
-	var tints := [Color(2.3, 2.0, 1.7), Color(1.25, 1.46, 1.78), Color(0.27, 0.35, 0.67), Color(0.95, 0.63, 0.39)]
 	for y in range(256):
+		var latitude := PI * (float(y) + 0.5) / 256.0
+		var direction_y := cos(latitude)
 		for x in range(512):
-			var uv := Vector2(float(x) / 512.0, float(y) / 256.0)
-			var overhead := 1.0 - smoothstep(0.27, 0.73, uv.y)
-			var colour := Color(0.023, 0.030, 0.045).lerp(Color(0.115, 0.125, 0.154), overhead)
-			for index in range(panels.size()):
-				var rect: Vector4 = panels[index]
-				var horizontal := absf(wrapf(uv.x - rect.x, -0.5, 0.5))
-				var vertical := absf(uv.y - rect.y)
-				var light := (1.0 - smoothstep(rect.z - 0.004, rect.z + 0.006, horizontal)) * (1.0 - smoothstep(rect.w - 0.004, rect.w + 0.006, vertical))
-				colour += tints[index] * light
+			var colour := Color(0.040, 0.046, 0.057).lerp(Color(0.16, 0.17, 0.19), smoothstep(-0.4, 0.8, direction_y))
+			if direction_y > 0.15:
+				var longitude := TAU * (float(x) + 0.5) / 512.0
+				var ceiling := Vector2(sin(longitude), -cos(longitude)) * (sin(latitude) * STRIP_HEIGHT / direction_y)
+				for offset: float in STRIP_OFFSETS:
+					var distance_x := absf(ceiling.x - offset)
+					var width := 1.0 - smoothstep(0.07, 0.19, distance_x)
+					var length := 1.0 - smoothstep(3.50, 3.65, absf(ceiling.y))
+					colour += Color(4.9, 5.0, 5.2) * width * length
 			colour.a = 1.0
 			image.set_pixel(x, y, colour)
 	var panorama := PanoramaSkyMaterial.new()
@@ -132,19 +139,69 @@ func _add_environment() -> void:
 	stage.add_child(world)
 
 
-func _add_fill(location: Vector3, tint: Color, panel_size: Vector2, strength: float) -> void:
-	var light := AreaLight3D.new()
-	light.position = location
-	light.light_color = tint
-	light.area_range = 30.0
-	light.area_size = panel_size
-	light.shadow_enabled = true
-	light.shadow_bias = 0.045
-	light.shadow_normal_bias = 0.32
-	light.set_meta("strength", strength)
-	stage.add_child(light)
-	light.look_at(Vector3(0.0, 0.75, 0.0))
-	_fill.append(light)
+func _add_strips() -> void:
+	_strip_material = ShaderMaterial.new()
+	_strip_material.shader = STRIP_SHADER
+	var diffuser := BoxMesh.new()
+	diffuser.size = Vector3(STRIP_SIZE.x, 0.025, STRIP_SIZE.y)
+	for offset: float in STRIP_OFFSETS:
+		var light := AreaLight3D.new()
+		light.position = Vector3(offset, STRIP_HEIGHT, 0.0)
+		light.rotation_degrees.x = -90.0
+		light.light_color = Color("#edf4ff")
+		light.area_size = STRIP_SIZE
+		light.area_range = 12.0
+		light.shadow_enabled = true
+		light.shadow_bias = 0.035
+		light.shadow_normal_bias = 0.24
+		stage.add_child(light)
+		_fill.append(light)
+		var fixture := MeshInstance3D.new()
+		fixture.position = light.position
+		fixture.mesh = diffuser
+		fixture.material_override = _strip_material
+		fixture.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		stage.add_child(fixture)
+
+
+func _add_floor_reflection() -> void:
+	_mirror_view = SubViewport.new()
+	_mirror_view.world_3d = viewport.find_world_3d()
+	_mirror_view.transparent_bg = true
+	_mirror_view.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	_mirror_view.positional_shadow_atlas_size = 1024
+	viewport.add_child(_mirror_view)
+	RenderingServer.viewport_set_measure_render_time(_mirror_view.get_viewport_rid(), true)
+	_mirror_camera = Camera3D.new()
+	_mirror_camera.cull_mask = 1
+	_mirror_camera.environment = environment.duplicate()
+	_mirror_camera.environment.background_color = Color.BLACK
+	_mirror_camera.environment.tonemap_mode = Environment.TONE_MAPPER_LINEAR
+	_mirror_camera.environment.tonemap_exposure = 1.0
+	_mirror_view.add_child(_mirror_camera)
+	_floor_material.set_shader_parameter("floor_reflection", _mirror_view.get_texture())
+	viewport.size_changed.connect(_resize_floor_reflection)
+	_resize_floor_reflection()
+
+
+func _resize_floor_reflection() -> void:
+	_mirror_view.size = (viewport.size / 2).max(Vector2i(4, 4))
+
+
+func _update_floor_reflection() -> void:
+	var active := _reflections and model != null and camera.position.y > camera.near
+	if active:
+		var reflected := camera.global_transform
+		reflected.origin.y = -reflected.origin.y
+		reflected.basis.x *= Vector3(-1.0, 1.0, -1.0)
+		reflected.basis.y.y = -reflected.basis.y.y
+		reflected.basis.z.y = -reflected.basis.z.y
+		_mirror_camera.global_transform = reflected
+		_mirror_camera.fov = camera.fov
+		_mirror_camera.near = camera.near
+		_mirror_camera.far = camera.far
+	_mirror_view.render_target_update_mode = SubViewport.UPDATE_ALWAYS if active else SubViewport.UPDATE_DISABLED
+	_floor_parameter("show_reflection", active)
 
 
 func set_quality(aa: int, scale: float) -> void:
@@ -163,20 +220,24 @@ func set_quality(aa: int, scale: float) -> void:
 
 
 func gpu_frame_ms() -> float:
-	return RenderingServer.viewport_get_measured_render_time_gpu(viewport.get_viewport_rid())
+	var main := RenderingServer.viewport_get_measured_render_time_gpu(viewport.get_viewport_rid())
+	if _mirror_view.render_target_update_mode == SubViewport.UPDATE_ALWAYS:
+		main += RenderingServer.viewport_get_measured_render_time_gpu(_mirror_view.get_viewport_rid())
+	return main
 
 
 func set_effects(reflections: bool, occlusion: bool, bounced_light: bool, bloom: bool) -> void:
+	_reflections = reflections
 	environment.ssr_enabled = reflections
 	environment.ssr_max_steps = 100
 	environment.ssr_depth_tolerance = 0.20
 	environment.ssao_enabled = occlusion
-	environment.ssao_radius = 0.52
-	environment.ssao_intensity = 1.65
-	environment.ssao_light_affect = 0.20
+	environment.ssao_radius = 0.37
+	environment.ssao_intensity = 2.2
+	environment.ssao_light_affect = 0.35
 	environment.ssil_enabled = bounced_light
 	environment.ssil_radius = 2.8
-	environment.ssil_intensity = 0.38
+	environment.ssil_intensity = 0.24
 	environment.glow_enabled = bloom
 	environment.glow_blend_mode = Environment.GLOW_BLEND_MODE_ADDITIVE
 	environment.glow_intensity = 0.14
@@ -196,8 +257,10 @@ func set_lighting(options: Dictionary) -> void:
 	_key.rotation_degrees = Vector3(-options.elevation, options.azimuth, 0.0)
 	_key.light_angular_distance = options.size
 	for panel in _fill:
-		panel.light_energy = options.fill * float(panel.get_meta("strength"))
+		panel.light_energy = options.fill
+	_strip_material.set_shader_parameter("brightness", options.fill * 3.5)
 	environment.ambient_light_energy = options.ambient
+	_mirror_camera.environment.ambient_light_energy = options.ambient
 	environment.tonemap_exposure = options.exposure
 	environment.background_color = options.background_color
 	_floor_material.set_shader_parameter("surface_roughness", options.floor_roughness)
@@ -211,9 +274,33 @@ func set_lighting(options: Dictionary) -> void:
 
 
 func _set_floor(enabled: bool) -> void:
-	_floor_material.set_shader_parameter("show_grid", enabled)
+	_floor_parameter("show_grid", enabled)
+
+
+func _floor_parameter(key: String, value: Variant) -> void:
+	_floor_material.set_shader_parameter(key, value)
 	if _ray_floor != null:
-		_ray_floor.set_shader_parameter("show_grid", enabled)
+		_ray_floor.set_shader_parameter(key, value)
+
+
+func _update_tire_contacts(geometries: Array[Node]) -> void:
+	var patches := PackedVector4Array()
+	patches.resize(8)
+	var count := 0
+	for node: MeshInstance3D in geometries:
+		if count == patches.size() or node.mesh == null:
+			continue
+		var tire := str(node.name).to_lower()
+		if not tire.begins_with("tyre_") or not tire.contains("_wheel_"):
+			continue
+		var bounds: AABB = node.global_transform * node.get_aabb()
+		if bounds.position.y > 0.12:
+			continue
+		var center := bounds.get_center()
+		patches[count] = Vector4(center.x, center.z, maxf(0.06, bounds.size.x * 0.63), maxf(0.06, bounds.size.z * 0.25))
+		count += 1
+	_floor_parameter("tire_patches", patches)
+	_floor_parameter("tire_count", count)
 
 
 func show_model(path: String) -> Dictionary:
@@ -244,8 +331,12 @@ func show_model(path: String) -> Dictionary:
 		holder.free()
 		return {"error": "车辆的网格边界无效。"}
 	var center := bounds.get_center()
-	holder.position = Vector3(-center.x, -bounds.position.y + 0.012, -center.z)
-	VehicleMaterials.new().apply(geometries, state, path, 0.0)
+	holder.position = Vector3(-center.x, -bounds.position.y + 0.002, -center.z)
+	var materials := VehicleMaterials.new()
+	materials.apply(geometries, state, path, holder.transform * bounds)
+	_painted_surfaces = materials.painted_surfaces
+	set_paint(_paint_finish, _paint_color)
+	_update_tire_contacts(geometries)
 	var first_or_different := model == null or not is_equal_approx(_radius, bounds.size.length() / 2.0)
 	if model != null:
 		model.queue_free()
@@ -259,7 +350,18 @@ func show_model(path: String) -> Dictionary:
 	_key.directional_shadow_max_distance = maxf(22.0, _radius * 5.0)
 	if first_or_different:
 		reset_camera()
-	return {"meshes": geometries.size(), "size": bounds.size}
+	return {"meshes": geometries.size(), "size": bounds.size, "paintable": not _painted_surfaces.is_empty()}
+
+
+func set_paint(finish: int, color: String) -> void:
+	_paint_finish = clampi(finish, 0, 4)
+	_paint_color = color
+	var custom_color := color.length() == 7 and color.begins_with("#") and Color.html_is_valid(color)
+	for surface in _painted_surfaces:
+		surface.set_shader_parameter("finish", _paint_finish)
+		surface.set_shader_parameter("recolor", _paint_finish != 0 and custom_color)
+		if custom_color:
+			surface.set_shader_parameter("paint_color", Color.html(color))
 
 
 
@@ -268,6 +370,8 @@ func clear_model() -> void:
 	if model != null:
 		model.queue_free()
 		model = null
+	_painted_surfaces.clear()
+	_floor_parameter("tire_count", 0)
 	_center = Vector3.ZERO
 	_radius = 3.0
 	reset_camera()
@@ -292,6 +396,7 @@ func _process(delta: float) -> void:
 	elif spinning and model != null:
 		_yaw += delta * 0.40
 		_move_camera()
+	_update_floor_reflection()
 
 
 func _gui_input(event: InputEvent) -> void:
@@ -477,6 +582,9 @@ func _on_ray_ready(ok: bool, request: int) -> void:
 	_ray_floor.set_shader_parameter("surface_roughness", _floor_material.get_shader_parameter("surface_roughness"))
 	_ray_floor.set_shader_parameter("backdrop_color", _floor_material.get_shader_parameter("backdrop_color"))
 	_ray_floor.set_shader_parameter("show_grid", _floor_material.get_shader_parameter("show_grid"))
+	_ray_floor.set_shader_parameter("floor_reflection", _mirror_view.get_texture())
+	_ray_floor.set_shader_parameter("tire_patches", _floor_material.get_shader_parameter("tire_patches"))
+	_ray_floor.set_shader_parameter("tire_count", _floor_material.get_shader_parameter("tire_count"))
 	_ray_floor.set_shader_parameter("shadow_strength", _shadow_strength())
 	_ray_ready = true
 	_update_ray_shadows()
@@ -484,7 +592,7 @@ func _on_ray_ready(ok: bool, request: int) -> void:
 
 
 func _shadow_strength() -> float:
-	return clampf(0.76 * _key.light_energy / (_key.light_energy + 0.40), 0.0, 0.82)
+	return clampf(1.06 * _key.light_energy / (_key.light_energy + 0.20), 0.0, 0.92)
 
 
 func _ray_parameters() -> PackedFloat32Array:
