@@ -9,8 +9,10 @@ if ($Version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') {
 
 & (Join-Path $Root 'Build-WinUI.ps1') -Publish
 $App = Join-Path $Work 'winui/publish/VehicleStudio/release_win-x64'
-if (!(Test-Path -LiteralPath (Join-Path $App 'VehicleStudio.exe') -PathType Leaf)) {
-    throw 'The self-contained WinUI application was not published.'
+foreach ($Required in @('VehicleStudio.exe', 'App.xbf', 'MainWindow.xbf', 'VehicleStudio.pri')) {
+    if (!(Test-Path -LiteralPath (Join-Path $App $Required) -PathType Leaf)) {
+        throw "The published WinUI application is missing $Required."
+    }
 }
 
 $Dist = Join-Path $Work 'dist'

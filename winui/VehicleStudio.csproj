@@ -20,4 +20,11 @@
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.6.5" />
     <Content Include="Assets\leonida.ico;Assets\leonida-mark.png" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <Target Name="IncludeWinUiResourcesInPublish" AfterTargets="ComputeFilesToPublish">
+    <ItemGroup>
+      <WinUiBuildResource Include="$(TargetDir)*.xbf;$(TargetDir)$(AssemblyName).pri" />
+      <ResolvedFileToPublish Include="@(WinUiBuildResource)"
+                             RelativePath="%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
 </Project>
