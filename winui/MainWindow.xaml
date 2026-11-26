@@ -26,6 +26,7 @@
             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                 <Button x:Name="OpenFolder" Click="OpenFolderClicked" Content="打开游戏目录" />
                 <Button x:Name="SettingsButton" Click="ToggleSettings" Content="设置" />
+                <Button Content="帮助" Click="OpenHelp" />
             </StackPanel>
         </Grid>
 
@@ -83,9 +84,9 @@
                             <TextBlock x:Name="ViewTitle" Text="白色摄影棚" FontSize="21" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                             <TextBlock x:Name="ViewSubtitle" Text="选择载具即可预览" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" TextTrimming="CharacterEllipsis" />
                         </StackPanel>
-                        <TextBlock x:Name="GpuTime" Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center"
+                        <TextBlock x:Name="FpsLabel" Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="11"
-                                   ToolTipService.ToolTip="视口实际输出像素与 3D GPU 耗时" />
+                                   ToolTipService.ToolTip="WinUI 视口每秒更新的画面数" />
                     </Grid>
                     <Grid Grid.Row="1" x:Name="PreviewSurface" Margin="1,0" Background="{ThemeResource ControlFillColorSecondaryBrush}">
                         <Image x:Name="PreviewImage" Stretch="Uniform" IsHitTestVisible="False" />
@@ -109,6 +110,7 @@
                             <Button Content="重置" Click="ResetCamera" ToolTipService.ToolTip="重置视角" />
                             <ToggleButton x:Name="Rotate" Content="旋转" Click="ToggleCamera" Tag="rotate" />
                             <ToggleButton x:Name="Fly" Content="自由视角" Click="ToggleCamera" Tag="free" />
+                            <Button x:Name="ScreenshotButton" Content="保存截图" Click="SaveScreenshot" IsEnabled="False" />
                         </StackPanel>
                         <TextBlock Grid.Column="1" x:Name="CameraHint" HorizontalAlignment="Right" VerticalAlignment="Center"
                                    TextTrimming="CharacterEllipsis" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -220,6 +222,7 @@
                         <CheckBox x:Name="Ao" Content="环境光遮蔽 SSAO" Click="QualityChanged" />
                         <CheckBox x:Name="Ssil" Content="间接光照 SSIL" Click="QualityChanged" />
                         <CheckBox x:Name="Bloom" Content="高光辉光" Click="QualityChanged" />
+                        <Button x:Name="ResetGraphicsButton" Content="重置图形设置" Click="ResetGraphics" HorizontalAlignment="Stretch" />
                     </StackPanel>
                 </Border>
                 <Border Grid.Row="1" Grid.Column="2" Padding="15" CornerRadius="9" VerticalAlignment="Top"

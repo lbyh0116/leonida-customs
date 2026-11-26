@@ -12,7 +12,6 @@ var _stage: SubViewportContainer
 var _token := ""
 var _connected := false
 var _busy := false
-var _elapsed := 0.0
 var _frame_elapsed := 0.0
 var _frame_credit := false
 var _path_active := false
@@ -82,10 +81,6 @@ func _process(delta: float) -> void:
 				_frame_credit = false
 				frame.convert(Image.FORMAT_RGBA8)
 				_send({"event": "frame", "width": frame.get_width(), "height": frame.get_height()}, frame.get_data())
-	_elapsed += delta
-	if _elapsed >= 0.65:
-		_elapsed = 0.0
-		_send({"event": "timing", "gpu_ms": _stage.gpu_frame_ms(), "fps": Engine.get_frames_per_second()})
 
 
 func _prepare_path_frame() -> void:

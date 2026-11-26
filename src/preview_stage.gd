@@ -22,7 +22,6 @@ var _mirror_camera: Camera3D
 var _mirror_transform := Transform3D.IDENTITY
 var _mirror_active := false
 var _mirror_dirty := true
-var _mirror_updated := false
 var _reflections := true
 var _painted_surfaces: Array[ShaderMaterial] = []
 var _vehicle_lamps: Array[BaseMaterial3D] = []
@@ -61,7 +60,6 @@ func _ready() -> void:
 	viewport.use_taa = true
 	viewport.positional_shadow_atlas_size = 4096
 	add_child(viewport)
-	RenderingServer.viewport_set_measure_render_time(viewport.get_viewport_rid(), true)
 	stage = Node3D.new()
 	viewport.add_child(stage)
 	_add_environment()
@@ -163,7 +161,6 @@ func _add_floor_reflection() -> void:
 	_mirror_view.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	_mirror_view.positional_shadow_atlas_size = 1024
 	viewport.add_child(_mirror_view)
-	RenderingServer.viewport_set_measure_render_time(_mirror_view.get_viewport_rid(), true)
 	_mirror_camera = Camera3D.new()
 	_mirror_camera.cull_mask = 1
 	_mirror_camera.environment = environment.duplicate()
@@ -182,7 +179,6 @@ func _resize_floor_reflection() -> void:
 
 
 func _update_floor_reflection() -> void:
-	_mirror_updated = false
 	var active := _reflections and not _path_tracing and model != null and camera.position.y > camera.near
 	if active != _mirror_active:
 		_mirror_active = active
@@ -194,7 +190,6 @@ func _update_floor_reflection() -> void:
 	if not _mirror_dirty and _mirror_transform.is_equal_approx(current):
 		return
 	_mirror_dirty = false
-	_mirror_updated = true
 	_mirror_transform = current
 	var reflected := current
 	reflected.origin.y = -reflected.origin.y
@@ -285,13 +280,6 @@ func set_quality(aa: int, scale: float) -> void:
 		4: viewport.msaa_3d = Viewport.MSAA_2X
 		5: viewport.msaa_3d = Viewport.MSAA_4X
 		6: viewport.msaa_3d = Viewport.MSAA_8X
-
-
-func gpu_frame_ms() -> float:
-	var main := RenderingServer.viewport_get_measured_render_time_gpu(viewport.get_viewport_rid())
-	if _mirror_updated:
-		main += RenderingServer.viewport_get_measured_render_time_gpu(_mirror_view.get_viewport_rid())
-	return main
 
 
 func set_effects(reflections: bool, occlusion: bool, bounced_light: bool, bloom: bool) -> void:

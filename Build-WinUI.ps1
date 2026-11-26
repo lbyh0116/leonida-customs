@@ -1,3 +1,5 @@
+param([switch]$Publish)
+
 $ErrorActionPreference = 'Stop'
 $Root = $PSScriptRoot
 $Work = Join-Path $Root 'work'
@@ -14,5 +16,6 @@ $env:TMP = $Work
 if (!(Get-Command dotnet -ErrorAction SilentlyContinue)) {
     throw '.NET 10 SDK is required to build the WinUI interface.'
 }
-dotnet build (Join-Path $Root 'winui/VehicleStudio.csproj') -c Release --artifacts-path (Join-Path $Work 'winui') --nologo
+$Command = if ($Publish) { 'publish' } else { 'build' }
+dotnet $Command (Join-Path $Root 'winui/VehicleStudio.csproj') -c Release --artifacts-path (Join-Path $Work 'winui') --nologo
 if ($LASTEXITCODE -ne 0) { throw 'The WinUI interface did not build.' }

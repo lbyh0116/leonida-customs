@@ -28,15 +28,15 @@ internal sealed class RendererClient : IDisposable
     public event Action<PreviewFrame>? FrameReceived;
     public event Action<string>? Disconnected;
 
-    public async Task<JsonElement> StartAsync(string root)
+    public async Task<JsonElement> StartAsync(string root, bool safeMode)
     {
         var rtx = Path.Combine(root, "tools", "godot-rtx", "godot.windows.editor.x86_64.exe");
-        var hasRtx = File.Exists(rtx);
+        var hasRtx = !safeMode && File.Exists(rtx);
         var engine = hasRtx
             ? rtx
             : Path.Combine(root, "tools", "godot", "Godot_v4.7.2-stable_win64.exe");
         if (!File.Exists(engine))
-            throw new InvalidOperationException("找不到 Godot。请先运行项目的 setup.ps1。");
+            throw new InvalidOperationException("找不到 Godot。请使用 Start-Viewer.cmd 安装或修复运行时。");
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
         timeout.CancelAfter(TimeSpan.FromSeconds(20));

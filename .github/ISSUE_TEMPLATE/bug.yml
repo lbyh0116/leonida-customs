@@ -1,0 +1,23 @@
+name: 软件故障
+description: 报告启动、载具读取或渲染问题
+body:
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 说明选了什么载具、配置或渲染模式，以及实际和预期结果。
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: 版本与诊断
+      description: 可粘贴应用中「帮助 → 复制诊断信息」的内容。分享手动摘录的日志前请去掉用户名、目录和其他个人信息。
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: asset-version
+    attributes:
+      label: 资源版本
+      placeholder: 例如 Xbox Series 1.0.2.1

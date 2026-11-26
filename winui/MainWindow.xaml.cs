@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Runtime.InteropServices.WindowsRuntime;
@@ -24,6 +25,7 @@ public sealed partial class MainWindow : Window
     private static readonly Regex PartPattern = new("^[0-9a-f]{8}$", RegexOptions.CultureInvariant);
     private static readonly Regex ColorPattern = new("^#[0-9a-fA-F]{6}$", RegexOptions.CultureInvariant);
     private static readonly string[] Arguments = Environment.GetCommandLineArgs();
+    private readonly bool safeMode = Arguments.Contains("--safe-mode");
     private readonly RendererClient renderer = new();
     private readonly List<ComboBox> partChoices = new();
     private readonly Dictionary<string, Slider> lightSliders = new();
@@ -51,7 +53,11 @@ public sealed partial class MainWindow : Window
     private bool preparingPathFrame;
     private WriteableBitmap? previewBitmap;
     private (int Width, int Height) previewSize;
-    private double previewGpuMs;
+    private readonly DispatcherTimer fpsTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+    private readonly Stopwatch fpsClock = new();
+    private int framesPresented;
+    private string? projectFolder;
+    private bool savingScreenshot;
     private IReadOnlyList<AaChoice> aaMethods = [];
     private IReadOnlyList<AaTier> aaTiers = [];
     private AaMethod rasterAa = AaMethod.Taa;
@@ -63,6 +69,7 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        fpsTimer.Tick += (_, _) => UpdateFps();
         Shell.ActualThemeChanged += (_, _) => UpdateTitleTheme();
         foreach (var button in new[] { OpenFolder, SettingsButton, ReadParts, Apply, CopyCode, ImportCode })
             button.Click += (_, _) => StudioMotion.Pressed(button);
@@ -104,6 +111,7 @@ public sealed partial class MainWindow : Window
                 return;
             args.Cancel = true;
             closing = true;
+            fpsTimer.Stop();
             await renderer.CloseAsync();
             viewport?.Dispose();
             Close();
@@ -126,7 +134,7 @@ public sealed partial class MainWindow : Window
         SetBusy(true);
         try
         {
-            var root = LocateProject();
+            var root = projectFolder = LocateProject();
             preferencePath = Path.Combine(root, "work", "viewer-preferences.json");
             LoadPreferences();
             viewport = new NativeViewport();
@@ -139,12 +147,14 @@ public sealed partial class MainWindow : Window
             renderer.Disconnected += message => DispatcherQueue.TryEnqueue(() =>
             {
                 connected = false;
+                fpsTimer.Stop();
+                FpsLabel.Text = "";
                 preparingPathFrame = false;
                 UpdatePreviewLoading();
                 SetBusy(false);
                 Report(message, error: true);
             });
-            var hello = await renderer.StartAsync(root);
+            var hello = await renderer.StartAsync(root, safeMode);
             for (var attempt = 0; attempt < 20 && viewport.RendererWindow == 0; attempt++)
             {
                 if (!viewport.TryAttach(renderer.ProcessId))
@@ -161,30 +171,32 @@ public sealed partial class MainWindow : Window
             PathTracingOption.IsEnabled = pathAvailable;
             populating = true;
             BuildLighting(hello.GetProperty("lighting"));
-            RenderMode.SelectedIndex = pathAvailable && Arguments.Contains("--ray-tracing") ? 1 : 0;
-            PathQuality.SelectedIndex = 2;
-            Ssr.IsChecked = Ao.IsChecked = Ssil.IsChecked = Bloom.IsChecked = true;
-            PopulateAaMethods();
+            ApplyGraphicsPreferences(Arguments.Contains("--ray-tracing"));
             populating = false;
             await SendQualityAsync();
             await ApplyPreviewPreferencesAsync();
             await ResizePreviewAsync();
+            fpsClock.Restart();
+            fpsTimer.Start();
             await PostAsync("frame_ack", new { });
             SetBusy(false);
             var saved = Arguments.FirstOrDefault(arg => arg.StartsWith("--game=", StringComparison.Ordinal))?[7..]
-                ?? hello.GetProperty("saved_game").GetString();
+                ?? (safeMode ? null : hello.GetProperty("saved_game").GetString());
             if (!string.IsNullOrWhiteSpace(saved))
                 await LoadGameAsync(saved);
             else
-                Report("请选择含有 levels.rpf、packs.rpf 和 data.rpf 的目录。");
+                Report("用「打开游戏目录」选择自己的 Xbox 版资源。需要帮助时点右上角「帮助」。");
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             connected = false;
+            if (closing)
+                return;
             SetBusy(false);
             viewport?.Dispose();
             renderer.Dispose();
-            Report(ex is OperationCanceledException ? "预览进程启动超时。请查看 work 目录中的渲染日志。" : ex.Message, error: true);
+            RenderPanel.Visibility = Visibility.Collapsed;
+            Report(ex is OperationCanceledException ? "预览进程启动超时。可使用安全模式或从「帮助」打开日志。" : ex.Message, error: true);
         }
     }
 
@@ -214,10 +226,6 @@ public sealed partial class MainWindow : Window
             case "path_warmup":
                 preparingPathFrame = message.GetProperty("active").GetBoolean();
                 UpdatePreviewLoading();
-                break;
-            case "timing":
-                previewGpuMs = message.GetProperty("gpu_ms").GetDouble();
-                UpdateViewportLabel();
                 break;
         }
     }
@@ -251,11 +259,12 @@ public sealed partial class MainWindow : Window
                 {
                     previewBitmap = new WriteableBitmap(frame.Width, frame.Height);
                     PreviewImage.Source = previewBitmap;
-                    UpdateViewportLabel();
                 }
                 using var pixels = previewBitmap.PixelBuffer.AsStream();
                 pixels.Write(frame.Pixels.Span);
                 previewBitmap.Invalidate();
+                framesPresented++;
+                ScreenshotButton.IsEnabled = !savingScreenshot;
             }
         }
         catch (Exception ex) when (ex is FormatException or IOException or System.Runtime.InteropServices.COMException)
@@ -269,10 +278,13 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void UpdateViewportLabel()
+    private void UpdateFps()
     {
-        if (previewBitmap is not null)
-            GpuTime.Text = $"{previewBitmap.PixelWidth} × {previewBitmap.PixelHeight}   ·   GPU {previewGpuMs:F1} ms";
+        var seconds = fpsClock.Elapsed.TotalSeconds;
+        if (seconds > 0 && previewBitmap is not null)
+            FpsLabel.Text = $"{framesPresented / seconds:F0} FPS";
+        framesPresented = 0;
+        fpsClock.Restart();
     }
 
     private async void OpenFolderClicked(object sender, RoutedEventArgs args)
@@ -756,7 +768,7 @@ public sealed partial class MainWindow : Window
         populating = true;
         PopulateAaMethods();
         populating = false;
-        await SendQualityAsync();
+        await SaveGraphicsAsync();
     }
 
     private async void AaMethodChanged(object sender, SelectionChangedEventArgs args)
@@ -771,7 +783,7 @@ public sealed partial class MainWindow : Window
         populating = true;
         PopulateAaTiers();
         populating = false;
-        await SendQualityAsync();
+        await SaveGraphicsAsync();
     }
 
     private async void AaQualityChanged(object sender, SelectionChangedEventArgs args)
@@ -779,13 +791,56 @@ public sealed partial class MainWindow : Window
         if (!connected || populating || AaQuality.SelectedIndex < 0 || Antialias.SelectedIndex < 0)
             return;
         selectedTiers[(PathSelected, aaMethods[Antialias.SelectedIndex].Method)] = AaQuality.SelectedIndex;
-        await SendQualityAsync();
+        await SaveGraphicsAsync();
     }
 
     private async void QualityChanged(object sender, RoutedEventArgs args)
     {
         if (connected && !populating)
-            await SendQualityAsync();
+            await SaveGraphicsAsync();
+    }
+
+    private void ApplyGraphicsPreferences(bool requestPath = false)
+    {
+        var options = safeMode ? new() : preferences.Graphics ?? new();
+        RenderMode.SelectedIndex = pathAvailable && (requestPath || options.Path) ? 1 : 0;
+        PathQuality.SelectedIndex = Math.Clamp(options.PathQuality, 0, 3);
+        rasterAa = Enum.IsDefined(options.RasterAa) ? options.RasterAa : AaMethod.Taa;
+        pathAa = Enum.IsDefined(options.PathAa) ? options.PathAa : AaMethod.Dlss;
+        selectedTiers.Clear();
+        foreach (var tier in options.Tiers ?? [])
+            selectedTiers[(tier.Path, tier.Method)] = tier.Index;
+        Ssr.IsChecked = options.Reflections;
+        Ao.IsChecked = options.Occlusion;
+        Ssil.IsChecked = options.IndirectLight;
+        Bloom.IsChecked = options.Bloom;
+        PopulateAaMethods();
+    }
+
+    private Task SaveGraphicsAsync()
+    {
+        if (safeMode)
+            return SendQualityAsync();
+        preferences = preferences with
+        {
+            Graphics = new GraphicsPreferences(PathSelected, PathQuality.SelectedIndex, rasterAa, pathAa,
+                Ssr.IsChecked == true, Ao.IsChecked == true, Ssil.IsChecked == true, Bloom.IsChecked == true,
+                selectedTiers.Select(tier => new SavedTier(tier.Key.Path, tier.Key.Method, tier.Value)).ToArray())
+        };
+        SavePreferences();
+        return SendQualityAsync();
+    }
+
+    private async void ResetGraphics(object sender, RoutedEventArgs args)
+    {
+        if (!connected)
+            return;
+        preferences = preferences with { Graphics = null };
+        populating = true;
+        ApplyGraphicsPreferences();
+        populating = false;
+        SavePreferences();
+        await SendQualityAsync();
     }
 
     private Task SendQualityAsync()
@@ -949,8 +1004,10 @@ public sealed partial class MainWindow : Window
             2 => ElementTheme.Dark,
             _ => ElementTheme.Default
         };
-        SystemBackdrop = MicaSwitch.IsOn ? SystemBackdrop as MicaBackdrop ?? new MicaBackdrop() : null;
-        SolidBackdrop.Visibility = MicaSwitch.IsOn ? Visibility.Collapsed : Visibility.Visible;
+        bool mica = MicaSwitch.IsOn && OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000);
+        MicaSwitch.IsEnabled = OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000);
+        SystemBackdrop = mica ? SystemBackdrop as MicaBackdrop ?? new MicaBackdrop() : null;
+        SolidBackdrop.Visibility = mica ? Visibility.Collapsed : Visibility.Visible;
         UpdateTitleTheme();
     }
 
@@ -1054,5 +1111,10 @@ public sealed partial class MainWindow : Window
     private enum AaMethod { None = 0, Fxaa = 1, Smaa = 2, Taa = 3, Msaa = 4, Fsr2 = 7, Dlss = 8 }
     private sealed record AaChoice(AaMethod Method, string Label);
     private sealed record AaTier(string Label, int EngineMode, double Scale);
-    private sealed record Preferences(int Theme = 0, bool Mica = true, bool Lamps = true, bool Grid = false, string FloorColor = "");
+    private sealed record Preferences(int Theme = 0, bool Mica = true, bool Lamps = true, bool Grid = false,
+        string FloorColor = "", GraphicsPreferences? Graphics = null);
+    private sealed record GraphicsPreferences(bool Path = false, int PathQuality = 2,
+        AaMethod RasterAa = AaMethod.Taa, AaMethod PathAa = AaMethod.Dlss, bool Reflections = true,
+        bool Occlusion = true, bool IndirectLight = true, bool Bloom = true, SavedTier[]? Tiers = null);
+    private sealed record SavedTier(bool Path, AaMethod Method, int Index);
 }

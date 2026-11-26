@@ -26,17 +26,16 @@ func attach(stage: SubViewportContainer) -> void:
 	add_child(_stack)
 	_light = _stage.lighting_defaults()
 
-	var gpu_time := Label.new()
-	gpu_time.add_theme_color_override("font_color", Color("#ada9b7"))
-	gpu_time.add_theme_font_size_override("font_size", 12)
-	_stack.add_child(gpu_time)
+	var fps := Label.new()
+	fps.add_theme_color_override("font_color", Color("#ada9b7"))
+	fps.add_theme_font_size_override("font_size", 12)
+	_stack.add_child(fps)
 	var meter := Timer.new()
 	meter.wait_time = 0.5
 	meter.autostart = true
 	meter.timeout.connect(func():
 		if is_visible_in_tree():
-			var ms: float = _stage.gpu_frame_ms()
-			gpu_time.text = "3D GPU %.2f ms · %d FPS" % [ms, Engine.get_frames_per_second()] if ms > 0.0 else "GPU 计时暂不可用")
+			fps.text = "%d FPS" % Engine.get_frames_per_second())
 	add_child(meter)
 	_heading("画质")
 	var presets := OptionButton.new()

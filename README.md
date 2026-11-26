@@ -2,13 +2,13 @@
 
 Windows x64 上的离线载具查看器。WinUI 3 提供载具库和设置，同一窗口内的白色摄影棚由 Godot 4 渲染，SixNG 读取 Xbox RPF9 载具资源。应用按 GPL-3.0-only 开源。查看游戏内容时，请在本机提供自己的游戏文件。
 
-## 启动
+## 下载和启动
 
-1. 在 Windows 上安装 .NET 10 SDK，把源码放在有空间的本地磁盘。首次运行时，在项目目录执行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1`。此步骤从官方发布页下载 Godot 4.7.2 与 SixNG 0.11.0，验证 SHA-256，把工具放入项目的 `tools` 目录，并将 WinUI 应用编译到 `work/winui`。
-2. 双击 `Start-Viewer.cmd`。点「打开游戏目录」，选择含有 `levels.rpf`、`packs.rpf` 与 `data.rpf` 的 Xbox 版目录。也可以用 `Start-Viewer.cmd "--game=G:\你的游戏目录"`。
-3. 第一次打开时会扫描档案并恢复模型名称。进度显示在窗口底部。扫描完成后应用会记住目录，旧索引可用于同一份资源。
+1. 从 [GitHub Releases](https://github.com/lbyh0116/gta6-vehicle-viewer/releases) 下载 Windows x64 ZIP，将整个压缩包解压到可写且空间充足的目录。需要 Windows 10 2004（内部版本 19041）或更高版本，以及支持 Vulkan 的显卡和驱动。云母背景需要 Windows 11。
+2. 双击 `Start-Viewer.cmd`。首次联网下载并校验 Godot 和 SixNG 后，便携版可离线启动，无需安装 .NET SDK。
+3. 选择「打开游戏目录」，指定含 `levels.rpf`、`packs.rpf` 和 `data.rpf` 的 Xbox 资源目录。首次扫描需要数分钟，随后会复用索引。也可以用 `Start-Viewer.cmd "--game=G:\你的游戏目录"`。
 
-首次扫描和整车缓存均位于项目内的 `work`。把项目放在 E 盘即可把这些大文件留在 E 盘。首扫需要数分钟，具体取决于磁盘速度。重新打开已索引的同一目录可复用缓存。预览器对原始游戏目录只读，离线操作，无需启动游戏。源码仓库忽略本地游戏资源、索引、GLB 缓存和依赖二进制文件。
+索引、整车预览缓存、设置和日志存放在解压目录的 `work`。可将软件解压到有足够空间的其他盘。软件只读取原始游戏目录，仓库和便携包均不包含游戏资源。
 
 ## 预览与改装
 
@@ -18,19 +18,20 @@ Windows x64 上的离线载具查看器。WinUI 3 提供载具库和设置，同
 
 ## 渲染设置与自由视角
 
-工位使用镜头外的顶置大柔光板和可调颜色、粗糙度的亮面地板。纯光栅的平面倒影随镜头、车漆和灯光变化刷新。Godot 按中央视口的物理像素尺寸输出画面，并无损传给 WinUI，预览传输上限为 30 帧每秒。视口右上角显示实际输出尺寸与 GPU 耗时。
+工位使用镜头外的顶置大柔光板和可调颜色、粗糙度的亮面地板。纯光栅的平面倒影随镜头、车漆和灯光变化刷新。Godot 按中央视口的物理像素尺寸输出画面，并无损传给 WinUI，预览传输上限为 30 帧每秒。视口右上角显示 WinUI 每秒更新的画面数（FPS）。实际输出分辨率可在「帮助」查看。
 
-- 右上角「设置」集中管理界面主题、Mica、车灯、地面网格、渲染和灯光。「灯光与地面」的颜色选择器支持十六进制输入。车灯默认打开，外观、车灯、网格和地面颜色保存在项目的 `work/viewer-preferences.json`。
+- 右上角「设置」集中管理界面主题、Mica、车灯、地面网格、渲染和灯光。「灯光与地面」的颜色选择器支持十六进制输入。车灯默认打开，外观、车灯、网格、地面颜色和图形设置保存在 `work/viewer-preferences.json`。可在渲染设置中恢复默认。
 - 「纯光栅」使用 Forward+，可切换 SSR、平面倒影、SSAO、SSIL 和辉光。抗锯齿支持 TAA、FXAA、SMAA、MSAA、FSR 2.2 和关闭。
 - 安装官方 NVIDIA Godot RTX 运行时后，可在同一窗口切换「全路径追踪」。路径追踪画质提供性能、平衡、质量、极致四档，分别使用每像素 1、2、4、8 个样本。首次切换或加载新材质时，视口会提示正在准备着色器。
 - 先选抗锯齿与超分方法，再选对应的档位。MSAA 支持 2×、4×、8×，FSR 2.2 提供原生 AA 和超分档位。NVIDIA DLSS 需要另装 Streamline 并通过硬件检测，提供原生 DLAA、质量、平衡和性能。DLSS 4.5 超分和 DLAA 使用第二代 Transformer 的 Model M。超分档位改变 3D 内部采样，输出仍按 WinUI 视口尺寸。支持光线重建时，路径追踪搭配 DLSS 或 DLAA 自动启用光线重建，默认用原生 DLAA 和每像素 4 个样本。
+- 点击视口底部「保存截图」，可以将当前视口画面以原生输出尺寸存为 PNG。
 - 点击预览底部「自由视角」后，鼠标在预览区域内控制朝向，WASD 平移，Q/E 降低或抬高，Shift 加速，滚轮调移动速度，Esc 退出。普通环绕模式仍可用。
 
 ### 可选 RTX 运行时
 
 默认入口在安装 RTX 运行时后自动使用它，并从纯光栅起步。`Start-Viewer-RayTracing.cmd` 在本机支持时直接进入全路径追踪。
 
-`setup.ps1 -RayTracing` 通过已登录的 GitHub CLI 获取 [NVIDIA 官方 Windows 构建](https://github.com/NVIDIA-RTX/godot/actions/runs/41390391716)。可用 `setup.ps1 -DLSS` 同时安装 [NVIDIA Streamline 2.10.0](https://github.com/NVIDIA-RTX/Streamline/releases/tag/v2.10.0)。构建归档到期后，也可从 [NVIDIA Godot RTX 对应提交](https://github.com/NVIDIA-RTX/godot/tree/49a825dc52c0f1892ff5ce5cdbbe7572c638d41a) 编译 Windows x64 编辑器，将可执行文件放入 `tools/godot-rtx`，命名为 `godot.windows.editor.x86_64.exe`。
+`Install-ViewerRuntime.ps1 -RayTracing` 通过已登录的 GitHub CLI 获取 [NVIDIA 官方 Windows 构建](https://github.com/NVIDIA-RTX/godot/actions/runs/41390391716)。可用 `Install-ViewerRuntime.ps1 -DLSS` 同时安装 [NVIDIA Streamline 2.10.0](https://github.com/NVIDIA-RTX/Streamline/releases/tag/v2.10.0)。构建归档到期后，也可从 [NVIDIA Godot RTX 对应提交](https://github.com/NVIDIA-RTX/godot/tree/49a825dc52c0f1892ff5ce5cdbbe7572c638d41a) 编译 Windows x64 编辑器，将可执行文件放入 `tools/godot-rtx`，命名为 `godot.windows.editor.x86_64.exe`。
 
 可运行不依赖游戏文件的渲染切换检查：
 
@@ -45,9 +46,17 @@ Windows x64 上的离线载具查看器。WinUI 3 提供载具库和设置，同
 - 对带有 SixNG 主漆标记的模型，可在 WinUI「改装配件」实时切换亮光实色、金属漆、哑光和珠光。可沿用原车颜色或输入 `#RRGGBB`。这些饰面使用预览器的参数，当前改车码仅记录原厂配置和配件。Xbox BCPack 解码、游戏专用着色器、涂装及部分配件数据会影响复现精度。
 - 改装属于本地预览，配件随 SixNG 对该车型的解析能力而定。改车码在同版本资源之间最容易复现。
 
-## 开发
+## 故障排查
 
-使用 `Build-WinUI.ps1` 重新编译本地界面，或直接打开 `winui/VehicleStudio.csproj`。启动脚本会连接 `preview-worker.tscn`。Godot 的 `main.tscn` 可用于单独调试渲染器。
+- 如果 RTX 运行时、上次的图形设置或游戏目录导致启动异常，双击 `Start-Viewer-Safe-Mode.cmd`。它使用稳定版 Godot 和默认纯光栅设置，并跳过自动读取上次的游戏目录。
+- 「帮助」可以复制不含游戏目录和账户名的诊断摘要，也可以打开本地日志目录。[提交问题](https://github.com/lbyh0116/gta6-vehicle-viewer/issues/new/choose)时可添加摘要和复现步骤。分享原始日志前请检查其中的本地路径。
+- 这是非官方项目，与 Rockstar Games 无关联。软件按 GPL-3.0-only 发布。
+
+## 从源码构建
+
+安装 .NET 10 SDK 后，运行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1`，再运行 `Start-Viewer.cmd`。可用 `Build-WinUI.ps1` 重新编译。Godot 的 `main.tscn` 用于单独调试渲染器。
+
+运行 `Package-Viewer.ps1` 可在 `work/dist` 生成 Windows x64 ZIP 和 SHA-256 校验文件。GitHub Actions 也会构建同样的便携包。
 
 ## 依赖
 
