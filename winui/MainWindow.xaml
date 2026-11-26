@@ -1,7 +1,7 @@
 <Window x:Class="VehicleStudio.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Grid x:Name="Shell"
+    <Grid x:Name="Shell" UseLayoutRounding="True"
           Loaded="ShellLoaded" Padding="15" RowSpacing="12">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -74,18 +74,23 @@
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
-                    <Grid Padding="15,10">
+                    <Grid Padding="15,10" ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
                         <StackPanel>
-                            <TextBlock x:Name="ViewTitle" Text="白色摄影棚" FontSize="21" FontWeight="SemiBold" />
-                            <TextBlock x:Name="ViewSubtitle" Text="选择载具即可预览" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" />
+                            <TextBlock x:Name="ViewTitle" Text="白色摄影棚" FontSize="21" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                            <TextBlock x:Name="ViewSubtitle" Text="选择载具即可预览" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" TextTrimming="CharacterEllipsis" />
                         </StackPanel>
-                        <TextBlock x:Name="GpuTime" HorizontalAlignment="Right" VerticalAlignment="Center"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="11" />
+                        <TextBlock x:Name="GpuTime" Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="11"
+                                   ToolTipService.ToolTip="视口实际输出像素与 3D GPU 耗时" />
                     </Grid>
                     <Grid Grid.Row="1" x:Name="PreviewSurface" Margin="1,0" Background="{ThemeResource ControlFillColorSecondaryBrush}">
                         <Image x:Name="PreviewImage" Stretch="Uniform" IsHitTestVisible="False" />
                         <ProgressBar x:Name="PreviewProgress" VerticalAlignment="Top" IsIndeterminate="True" Visibility="Collapsed"
-                                     AutomationProperties.Name="正在编译路径追踪材质" IsHitTestVisible="False" />
+                                     AutomationProperties.Name="正在准备路径追踪画面" IsHitTestVisible="False" />
                     </Grid>
                     <Grid Grid.Row="2" Padding="10,8" ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
@@ -184,38 +189,21 @@
                             <ComboBoxItem Content="纯光栅 · Forward+" />
                             <ComboBoxItem x:Name="PathTracingOption" Content="全路径追踪 · RTX" />
                         </ComboBox>
-                        <ToggleSwitch x:Name="DlssSwitch" Header="NVIDIA DLSS / DLAA" Toggled="QualityChanged" />
-                        <ComboBox x:Name="Samples" Header="路径追踪样本 / 像素" HorizontalAlignment="Stretch" SelectionChanged="QualityChanged">
-                            <x:String>1</x:String>
-                            <x:String>2</x:String>
-                            <x:String>4</x:String>
-                            <x:String>8</x:String>
+                        <ComboBox x:Name="PathQuality" Header="路径追踪画质" HorizontalAlignment="Stretch" SelectionChanged="QualityChanged">
+                            <x:String>性能 · 1 样本/像素</x:String>
+                            <x:String>平衡 · 2 样本/像素</x:String>
+                            <x:String>质量 · 4 样本/像素</x:String>
+                            <x:String>极致 · 8 样本/像素</x:String>
                         </ComboBox>
+                        <ComboBox x:Name="Antialias" Header="抗锯齿与超分方法" HorizontalAlignment="Stretch"
+                                  SelectionChanged="AaMethodChanged" />
+                        <ComboBox x:Name="AaQuality" Header="抗锯齿与超分档位" HorizontalAlignment="Stretch"
+                                  SelectionChanged="AaQualityChanged" />
                         <TextBlock x:Name="RayStatus" TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                    <TextBlock Text="画质" FontWeight="SemiBold" />
-                    <ComboBox x:Name="Preset" HorizontalAlignment="Stretch"
-                              SelectionChanged="PresetChanged" AutomationProperties.Name="画质预设">
-                        <x:String>摄影棚 · 高画质</x:String>
-                        <x:String>平衡 · FSR 2.2 质量</x:String>
-                        <x:String>流畅 · FSR 2.2 性能</x:String>
-                    </ComboBox>
-                    <ComboBox x:Name="Antialias" HorizontalAlignment="Stretch"
-                              SelectionChanged="QualityChanged" AutomationProperties.Name="抗锯齿">
-                        <x:String>关闭抗锯齿</x:String>
-                        <x:String>FXAA</x:String>
-                        <x:String>SMAA</x:String>
-                        <x:String>TAA</x:String>
-                        <x:String>MSAA 2×</x:String>
-                        <x:String>MSAA 4×</x:String>
-                        <x:String>MSAA 8×</x:String>
-                        <x:String>FSR 2.2</x:String>
-                    </ComboBox>
-                    <Slider x:Name="Scale" Header="3D 渲染比例（%）" Minimum="50" Maximum="100"
-                            StepFrequency="1" Value="100" ValueChanged="QualityChanged" />
-                    <CheckBox x:Name="Ssr" Content="反射 · SSR 与地板倒影" Click="QualityChanged" />
-                    <CheckBox x:Name="Ao" Content="环境光遮蔽 SSAO" Click="QualityChanged" />
-                    <CheckBox x:Name="Ssil" Content="间接光照 SSIL" Click="QualityChanged" />
-                    <CheckBox x:Name="Bloom" Content="高光辉光" Click="QualityChanged" />
+                        <CheckBox x:Name="Ssr" Content="反射 · SSR 与地板倒影" Click="QualityChanged" />
+                        <CheckBox x:Name="Ao" Content="环境光遮蔽 SSAO" Click="QualityChanged" />
+                        <CheckBox x:Name="Ssil" Content="间接光照 SSIL" Click="QualityChanged" />
+                        <CheckBox x:Name="Bloom" Content="高光辉光" Click="QualityChanged" />
                     </StackPanel>
                 </Border>
                 <Border Grid.Row="1" Grid.Column="2" Padding="15" CornerRadius="9" VerticalAlignment="Top"

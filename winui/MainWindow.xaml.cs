@@ -1,12 +1,12 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Runtime.InteropServices.WindowsRuntime;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
-using Windows.Storage.Streams;
 using Windows.Foundation;
 using Windows.System;
 using Windows.ApplicationModel.DataTransfer;
@@ -46,6 +46,14 @@ public sealed partial class MainWindow : Window
     private Preferences preferences = new();
     private bool paintable;
     private bool closing;
+    private WriteableBitmap? previewBitmap;
+    private (int Width, int Height) previewSize;
+    private double previewGpuMs;
+    private IReadOnlyList<AaChoice> aaMethods = [];
+    private IReadOnlyList<AaTier> aaTiers = [];
+    private AaMethod rasterAa = AaMethod.Taa;
+    private AaMethod pathAa = AaMethod.Dlss;
+    private readonly Dictionary<(bool Path, AaMethod Method), int> selectedTiers = new();
     private Point? pointerPosition;
     private readonly HashSet<VirtualKey> heldKeys = new();
 
@@ -85,12 +93,6 @@ public sealed partial class MainWindow : Window
         };
         Title = "Leonida Motorworks · 载具预览器";
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "leonida.ico"));
-        var workArea = Microsoft.UI.Windowing.DisplayArea.GetFromWindowId(AppWindow.Id,
-            Microsoft.UI.Windowing.DisplayAreaFallback.Primary).WorkArea;
-        var width = Math.Min(1400, workArea.Width - 24);
-        var height = Math.Min(850, workArea.Height - 22);
-        AppWindow.MoveAndResize(new RectInt32(workArea.X + (workArea.Width - width) / 2,
-            workArea.Y + (workArea.Height - height) / 2, width, height));
         AppWindow.Closing += async (_, args) =>
         {
             if (closing)
@@ -108,6 +110,13 @@ public sealed partial class MainWindow : Window
         if (started)
             return;
         started = true;
+        var scale = Shell.XamlRoot.RasterizationScale;
+        var workArea = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary).WorkArea;
+        var width = Math.Min((int)Math.Round(1400 * scale), workArea.Width - 24);
+        var height = Math.Min((int)Math.Round(850 * scale), workArea.Height - 22);
+        AppWindow.MoveAndResize(new RectInt32(workArea.X + (workArea.Width - width) / 2,
+            workArea.Y + (workArea.Height - height) / 2, width, height));
+        Shell.XamlRoot.Changed += async (_, _) => await ResizePreviewAsync();
         SetBusy(true);
         try
         {
@@ -116,6 +125,11 @@ public sealed partial class MainWindow : Window
             LoadPreferences();
             viewport = new NativeViewport();
             renderer.Notification += message => DispatcherQueue.TryEnqueue(() => OnRendererEvent(message));
+            renderer.FrameReceived += frame =>
+            {
+                if (!DispatcherQueue.TryEnqueue(() => _ = PresentFrameAsync(frame)))
+                    frame.Dispose();
+            };
             renderer.Disconnected += message => DispatcherQueue.TryEnqueue(() =>
             {
                 connected = false;
@@ -137,15 +151,13 @@ public sealed partial class MainWindow : Window
             dlssAvailable = capabilities.GetProperty("dlss").GetBoolean();
             rayReconstruction = capabilities.GetProperty("ray_reconstruction").GetBoolean();
             PathTracingOption.IsEnabled = pathAvailable;
-            DlssSwitch.IsEnabled = dlssAvailable;
             populating = true;
             BuildLighting(hello.GetProperty("lighting"));
-            RenderMode.SelectedIndex = 0;
-            Samples.SelectedIndex = 0;
+            RenderMode.SelectedIndex = pathAvailable && Arguments.Contains("--ray-tracing") ? 1 : 0;
+            PathQuality.SelectedIndex = 2;
+            Ssr.IsChecked = Ao.IsChecked = Ssil.IsChecked = Bloom.IsChecked = true;
+            PopulateAaMethods();
             populating = false;
-            Preset.SelectedIndex = 0;
-            if (pathAvailable && Arguments.Contains("--ray-tracing"))
-                RenderMode.SelectedIndex = 1;
             await SendQualityAsync();
             await ApplyPreviewPreferencesAsync();
             await ResizePreviewAsync();
@@ -194,13 +206,9 @@ public sealed partial class MainWindow : Window
             case "path_warmup":
                 PreviewProgress.Visibility = message.GetProperty("active").GetBoolean() ? Visibility.Visible : Visibility.Collapsed;
                 break;
-            case "frame":
-                _ = PresentFrameAsync(message.GetProperty("jpeg").GetString() ?? "");
-                break;
             case "timing":
-                var gpu = message.GetProperty("gpu_ms").GetDouble();
-                if (gpu > 0)
-                    GpuTime.Text = $"3D GPU {gpu:F2} ms";
+                previewGpuMs = message.GetProperty("gpu_ms").GetDouble();
+                UpdateViewportLabel();
                 break;
         }
     }
@@ -210,29 +218,35 @@ public sealed partial class MainWindow : Window
         if (PreviewSurface.XamlRoot is null || PreviewSurface.ActualWidth < 8 || PreviewSurface.ActualHeight < 8)
             return Task.CompletedTask;
         var scale = PreviewSurface.XamlRoot.RasterizationScale;
-        var fit = Math.Min(scale, Math.Min(1440.0 / PreviewSurface.ActualWidth, 960.0 / PreviewSurface.ActualHeight));
-        var width = (int)Math.Round(PreviewSurface.ActualWidth * fit);
-        var height = (int)Math.Round(PreviewSurface.ActualHeight * fit);
+        var width = (int)Math.Round(PreviewSurface.ActualWidth * scale);
+        var height = (int)Math.Round(PreviewSurface.ActualHeight * scale);
+        if (!connected || (width, height) == previewSize)
+            return Task.CompletedTask;
+        previewSize = (width, height);
+        var fit = Math.Min(1, Math.Min(16384.0 / Math.Max(width, height), Math.Sqrt(RendererClient.MaxFramePixels / ((double)width * height))));
+        if (fit < 1)
+        {
+            width = (int)Math.Floor(width * fit);
+            height = (int)Math.Floor(height * fit);
+        }
         return PostAsync("resize", new { width, height });
     }
 
-    private async Task PresentFrameAsync(string encoded)
+    private async Task PresentFrameAsync(PreviewFrame frame)
     {
         try
         {
             if (!closing)
             {
-                using var stream = new InMemoryRandomAccessStream();
-                using (var buffer = new DataWriter(stream))
+                if (previewBitmap is null || previewBitmap.PixelWidth != frame.Width || previewBitmap.PixelHeight != frame.Height)
                 {
-                    buffer.WriteBytes(Convert.FromBase64String(encoded));
-                    await buffer.StoreAsync();
-                    buffer.DetachStream();
+                    previewBitmap = new WriteableBitmap(frame.Width, frame.Height);
+                    PreviewImage.Source = previewBitmap;
+                    UpdateViewportLabel();
                 }
-                stream.Seek(0);
-                var bitmap = new BitmapImage();
-                await bitmap.SetSourceAsync(stream);
-                PreviewImage.Source = bitmap;
+                using var pixels = previewBitmap.PixelBuffer.AsStream();
+                pixels.Write(frame.Pixels.Span);
+                previewBitmap.Invalidate();
             }
         }
         catch (Exception ex) when (ex is FormatException or IOException or System.Runtime.InteropServices.COMException)
@@ -241,8 +255,15 @@ public sealed partial class MainWindow : Window
         }
         finally
         {
+            frame.Dispose();
             await PostAsync("frame_ack", new { });
         }
+    }
+
+    private void UpdateViewportLabel()
+    {
+        if (previewBitmap is not null)
+            GpuTime.Text = $"{previewBitmap.PixelWidth} × {previewBitmap.PixelHeight}   ·   GPU {previewGpuMs:F1} ms";
     }
 
     private async void OpenFolderClicked(object sender, RoutedEventArgs args)
@@ -556,33 +577,92 @@ public sealed partial class MainWindow : Window
         await PostAsync("camera", new { action = toggle.Tag, enabled = toggle.IsChecked == true });
     }
 
-    private async void PresetChanged(object sender, SelectionChangedEventArgs args)
+    private bool PathSelected => pathAvailable && RenderMode.SelectedIndex == 1;
+
+    private void PopulateAaMethods()
     {
-        if (!connected || Preset.SelectedIndex < 0)
-            return;
-        var index = Preset.SelectedIndex;
-        populating = true;
-        Antialias.SelectedIndex = index == 0 ? 3 : 7;
-        Scale.Value = new[] { 100, 80, 60 }[index];
-        Ssr.IsChecked = index < 2;
-        Ao.IsChecked = true;
-        Ssil.IsChecked = index == 0;
-        Bloom.IsChecked = index < 2;
-        populating = false;
-        await SendQualityAsync();
+        var methods = new List<AaChoice> { new(AaMethod.None, "关闭") };
+        if (!PathSelected)
+        {
+            methods.AddRange([
+                new(AaMethod.Fxaa, "FXAA"),
+                new(AaMethod.Smaa, "SMAA"),
+                new(AaMethod.Taa, "TAA"),
+                new(AaMethod.Msaa, "MSAA"),
+                new(AaMethod.Fsr2, "AMD FSR 2.2")
+            ]);
+        }
+        if (dlssAvailable)
+            methods.Add(new(AaMethod.Dlss, "NVIDIA DLSS"));
+
+        aaMethods = methods;
+        Antialias.ItemsSource = methods.Select(choice => choice.Label).ToArray();
+        var wanted = PathSelected ? pathAa : rasterAa;
+        Antialias.SelectedIndex = Math.Max(0, methods.FindIndex(choice => choice.Method == wanted));
+        PopulateAaTiers();
+    }
+
+    private void PopulateAaTiers()
+    {
+        var method = aaMethods[Antialias.SelectedIndex].Method;
+        aaTiers = method switch
+        {
+            AaMethod.Dlss => [
+                new("DLAA · 原生 (100%)", 8, 1.0),
+                new("质量 (67%)", 8, 0.67),
+                new("平衡 (58%)", 8, 0.58),
+                new("性能 (50%)", 8, 0.50)
+            ],
+            AaMethod.Fsr2 => [
+                new("原生 AA (100%)", 7, 1.0),
+                new("超高质量 (77%)", 7, 0.77),
+                new("质量 (67%)", 7, 0.67),
+                new("平衡 (59%)", 7, 0.59),
+                new("性能 (50%)", 7, 0.50)
+            ],
+            AaMethod.Msaa => [
+                new("2×", 4, 1.0),
+                new("4×", 5, 1.0),
+                new("8×", 6, 1.0)
+            ],
+            _ => [new("原生 (100%)", (int)method, 1.0)]
+        };
+        AaQuality.ItemsSource = aaTiers.Select(tier => tier.Label).ToArray();
+        AaQuality.IsEnabled = aaTiers.Count > 1;
+        var defaultTier = method == AaMethod.Msaa ? 1 : 0;
+        AaQuality.SelectedIndex = Math.Clamp(selectedTiers.GetValueOrDefault((PathSelected, method), defaultTier), 0, aaTiers.Count - 1);
     }
 
     private async void RenderModeChanged(object sender, SelectionChangedEventArgs args)
     {
         if (!connected || populating)
             return;
-        if (RenderMode.SelectedIndex == 1)
-        {
-            populating = true;
-            DlssSwitch.IsOn = dlssAvailable;
-            Scale.Value = dlssAvailable ? 67 : 100;
-            populating = false;
-        }
+        populating = true;
+        PopulateAaMethods();
+        populating = false;
+        await SendQualityAsync();
+    }
+
+    private async void AaMethodChanged(object sender, SelectionChangedEventArgs args)
+    {
+        if (!connected || populating || Antialias.SelectedIndex < 0)
+            return;
+        var method = aaMethods[Antialias.SelectedIndex].Method;
+        if (PathSelected)
+            pathAa = method;
+        else
+            rasterAa = method;
+        populating = true;
+        PopulateAaTiers();
+        populating = false;
+        await SendQualityAsync();
+    }
+
+    private async void AaQualityChanged(object sender, SelectionChangedEventArgs args)
+    {
+        if (!connected || populating || AaQuality.SelectedIndex < 0 || Antialias.SelectedIndex < 0)
+            return;
+        selectedTiers[(PathSelected, aaMethods[Antialias.SelectedIndex].Method)] = AaQuality.SelectedIndex;
         await SendQualityAsync();
     }
 
@@ -594,23 +674,21 @@ public sealed partial class MainWindow : Window
 
     private Task SendQualityAsync()
     {
-        var path = pathAvailable && RenderMode.SelectedIndex == 1;
-        var dlss = dlssAvailable && DlssSwitch.IsOn;
-        var reconstruct = path && dlss && rayReconstruction;
-        Samples.IsEnabled = path;
-        Antialias.IsEnabled = !path && !dlss;
+        var path = PathSelected;
+        var tier = aaTiers[AaQuality.SelectedIndex];
+        var reconstruct = path && tier.EngineMode == 8 && rayReconstruction;
+        PathQuality.IsEnabled = path;
         Ssr.IsEnabled = Ao.IsEnabled = Ssil.IsEnabled = !path;
         GridLines.IsEnabled = !path;
         RayStatus.Text = path
             ? (reconstruct ? "全路径追踪 · DLSS 光线重建" : "全路径追踪 · 原始采样")
-            : !pathAvailable ? "纯光栅 · 当前运行时或 GPU 不支持路径追踪"
-            : dlss ? "纯光栅 · DLSS 已启用" : "纯光栅 · DLSS " + (dlssAvailable ? "可用" : "不可用");
+            : !pathAvailable ? "纯光栅 · 当前运行时或 GPU 不支持路径追踪" : "纯光栅 · Forward+";
         return PostAsync("quality", new
         {
-            aa = dlss ? 8 : path ? 0 : Antialias.SelectedIndex, scale = Scale.Value / 100,
+            aa = tier.EngineMode, scale = tier.Scale,
             ssr = Ssr.IsChecked == true, ao = Ao.IsChecked == true, ssil = Ssil.IsChecked == true,
             bloom = Bloom.IsChecked == true, path_tracing = path, ray_reconstruction = reconstruct,
-            samples = new[] { 1, 2, 4, 8 }[Math.Max(0, Samples.SelectedIndex)]
+            samples = 1 << Math.Max(0, PathQuality.SelectedIndex)
         });
     }
 
@@ -853,5 +931,8 @@ public sealed partial class MainWindow : Window
     public sealed record FactoryOption(string? Color, int Count);
     private sealed record PartOption(string Id, string Slot, [property: System.Text.Json.Serialization.JsonPropertyName("slot_name")] string? SlotName, string Label);
     private sealed record BuildCode(string Model, int Config, string[] Parts);
+    private enum AaMethod { None = 0, Fxaa = 1, Smaa = 2, Taa = 3, Msaa = 4, Fsr2 = 7, Dlss = 8 }
+    private sealed record AaChoice(AaMethod Method, string Label);
+    private sealed record AaTier(string Label, int EngineMode, double Scale);
     private sealed record Preferences(int Theme = 0, bool Mica = true, bool Lamps = true, bool Grid = false, string FloorColor = "");
 }

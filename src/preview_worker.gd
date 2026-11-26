@@ -3,6 +3,7 @@ extends Control
 const SixNG := preload("res://src/sixng.gd")
 const PreviewStage := preload("res://src/preview_stage.gd")
 const MAX_MESSAGE := 1 << 20
+const MAX_FRAME_PIXELS := 7680 * 4320
 
 var _transport := StreamPeerTCP.new()
 var _incoming := PackedByteArray()
@@ -15,8 +16,9 @@ var _elapsed := 0.0
 var _frame_elapsed := 0.0
 var _frame_credit := false
 var _path_active := false
-var _path_warmup_until := 0
+var _path_settle_frames := 0
 var _path_wait_until := 0
+var _path_configuration: Array = []
 
 
 func _ready() -> void:
@@ -70,6 +72,7 @@ func _process(delta: float) -> void:
 	var amount := _transport.get_available_bytes()
 	if amount > 0:
 		_read(amount)
+	_settle_path_frame()
 	_frame_elapsed += delta
 	if _frame_credit and _frame_elapsed >= 1.0 / 30.0 and _stage.viewport.size.x > 8:
 		_frame_elapsed = 0.0
@@ -77,7 +80,8 @@ func _process(delta: float) -> void:
 			var frame: Image = _stage.viewport.get_texture().get_image()
 			if frame != null and not frame.is_empty():
 				_frame_credit = false
-				_send({"event": "frame", "jpeg": Marshalls.raw_to_base64(frame.save_jpg_to_buffer(0.93))})
+				frame.convert(Image.FORMAT_RGBA8)
+				_send({"event": "frame", "width": frame.get_width(), "height": frame.get_height()}, frame.get_data())
 	_elapsed += delta
 	if _elapsed >= 0.65:
 		_elapsed = 0.0
@@ -86,18 +90,23 @@ func _process(delta: float) -> void:
 
 func _prepare_path_frame() -> void:
 	if _path_active and RenderingServer.has_method("get_rendering_not_ready_reasons"):
-		_path_warmup_until = Time.get_ticks_msec() + 250
-		_path_wait_until = _path_warmup_until + 20000
-		_send({"event": "path_warmup", "active": true})
+		_path_settle_frames = 12
+		if _path_wait_until == 0:
+			_send({"event": "path_warmup", "active": true})
+		_path_wait_until = Time.get_ticks_msec() + 20000
+
+
+func _settle_path_frame() -> void:
+	if _path_active and _path_settle_frames > 0 and int(RenderingServer.call("get_rendering_not_ready_reasons")) == 0:
+		_path_settle_frames -= 1
 
 
 func _frame_ready() -> bool:
 	if _path_wait_until == 0:
 		return true
 	var now := Time.get_ticks_msec()
-	if _path_active and now < _path_wait_until:
-		if now < _path_warmup_until or int(RenderingServer.call("get_rendering_not_ready_reasons")) != 0:
-			return false
+	if _path_active and now < _path_wait_until and _path_settle_frames > 0:
+		return false
 	_path_wait_until = 0
 	_send({"event": "path_warmup", "active": false})
 	return true
@@ -121,9 +130,17 @@ func _read(amount: int) -> void:
 		newline = _incoming.find(10)
 
 
-func _send(message: Dictionary) -> void:
-	if _connected:
-		_transport.put_data((JSON.stringify(message) + "\n").to_utf8_buffer())
+func _send(message: Dictionary, pixels := PackedByteArray()) -> void:
+	if not _connected:
+		return
+	var header := JSON.stringify(message).to_utf8_buffer()
+	var length := PackedByteArray()
+	length.resize(4)
+	length.encode_u32(0, header.size())
+	if _transport.put_data(length) != OK or _transport.put_data(header) != OK:
+		get_tree().quit(2)
+	elif not pixels.is_empty() and _transport.put_data(pixels) != OK:
+		get_tree().quit(2)
 
 
 func _handle(request: Dictionary) -> void:
@@ -142,10 +159,11 @@ func _handle(request: Dictionary) -> void:
 		"quality":
 			_stage.set_quality(int(data.aa), float(data.scale))
 			_stage.set_effects(data.ssr, data.ao, data.ssil, data.bloom)
-			var path_active: bool = _stage.set_render_mode(data.path_tracing, int(data.samples), data.ray_reconstruction)
-			if _path_active != path_active:
-				_path_active = path_active
+			_path_active = _stage.set_render_mode(data.path_tracing, int(data.samples), data.ray_reconstruction)
+			var configuration := [data.path_tracing, data.samples, data.aa, data.scale, data.ray_reconstruction]
+			if configuration != _path_configuration:
 				_prepare_path_frame()
+				_path_configuration = configuration
 		"lighting":
 			var lighting: Dictionary = _stage.lighting_defaults()
 			for key in lighting:
@@ -166,7 +184,10 @@ func _handle(request: Dictionary) -> void:
 					_stage.set_free_view(data.enabled)
 				_:	_stage.remote_camera_input(str(data.action), data)
 		"resize":
-			_stage.viewport.size = Vector2i(clampi(int(data.width), 8, 1440), clampi(int(data.height), 8, 960))
+			var size := Vector2i(int(data.width), int(data.height)).clamp(Vector2i(8, 8), Vector2i(16384, 16384))
+			if size.x * size.y <= MAX_FRAME_PIXELS and size != _stage.viewport.size:
+				_stage.viewport.size = size
+				_prepare_path_frame()
 		"frame_ack":
 			_frame_credit = true
 		"shutdown":

@@ -1,8 +1,11 @@
+using System.Buffers;
+using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 
@@ -20,7 +23,9 @@ internal sealed class RendererClient : IDisposable
     private int nextId;
 
     public int ProcessId => worker?.Id ?? 0;
+    public const int MaxFramePixels = 7680 * 4320;
     public event Action<JsonElement>? Notification;
+    public event Action<PreviewFrame>? FrameReceived;
     public event Action<string>? Disconnected;
 
     public async Task<JsonElement> StartAsync(string root)
@@ -57,21 +62,12 @@ internal sealed class RendererClient : IDisposable
         connection.NoDelay = true;
         var stream = connection.GetStream();
         writer = new StreamWriter(stream, new UTF8Encoding(false), leaveOpen: true) { AutoFlush = true };
-        var reader = new StreamReader(stream, Encoding.UTF8, leaveOpen: true);
-        try
-        {
-            var line = await reader.ReadLineAsync(timeout.Token);
-            var hello = Parse(line ?? throw new IOException("预览进程没有返回启动信息。"));
-            if (hello.GetProperty("event").GetString() != "hello" || hello.GetProperty("token").GetString() != secret)
-                throw new InvalidOperationException("预览进程验证失败。");
-            _ = ReadAsync(reader);
-            return hello;
-        }
-        catch
-        {
-            reader.Dispose();
-            throw;
-        }
+        var prefix = new byte[4];
+        var hello = await ReadHeaderAsync(stream, prefix, timeout.Token);
+        if (hello.GetProperty("event").GetString() != "hello" || hello.GetProperty("token").GetString() != secret)
+            throw new InvalidOperationException("预览进程验证失败。");
+        _ = Task.Run(() => ReadAsync(stream, prefix));
+        return hello;
     }
 
     public async Task<JsonElement> RequestAsync(string command, object data)
@@ -111,44 +107,82 @@ internal sealed class RendererClient : IDisposable
         }
     }
 
-    private async Task ReadAsync(StreamReader reader)
+    private async Task ReadAsync(NetworkStream stream, byte[] prefix)
     {
-        using (reader)
+        Exception? failure = null;
+        try
         {
-            Exception? failure = null;
-            try
+            while (!lifetime.IsCancellationRequested)
             {
-                while (await reader.ReadLineAsync(lifetime.Token) is { } line)
+                var message = await ReadHeaderAsync(stream, prefix, lifetime.Token);
+                if (message.TryGetProperty("id", out var id))
                 {
-                    var message = Parse(line);
-                    if (message.TryGetProperty("id", out var id))
-                    {
-                        if (requests.TryGetValue(id.GetInt32(), out var response))
-                            response.TrySetResult(message);
-                    }
-                    else
-                    {
-                        Notification?.Invoke(message);
-                    }
+                    if (requests.TryGetValue(id.GetInt32(), out var response))
+                        response.TrySetResult(message);
+                }
+                else if (message.GetProperty("event").GetString() == "frame")
+                {
+                    await ReadFrameAsync(stream, message);
+                }
+                else
+                {
+                    Notification?.Invoke(message);
                 }
             }
-            catch (Exception ex) when (ex is IOException or OperationCanceledException or FormatException or JsonException or ObjectDisposedException)
-            {
-                failure = ex;
-            }
-
-            if (lifetime.IsCancellationRequested)
-                return;
-            foreach (var request in requests.Values)
-                request.TrySetException(new IOException("预览进程已断开。", failure));
-            Disconnected?.Invoke("预览进程已断开。可关闭并重新启动预览器。");
         }
+        catch (Exception ex) when (ex is IOException or OperationCanceledException or FormatException or JsonException or ObjectDisposedException)
+        {
+            failure = ex;
+        }
+
+        if (lifetime.IsCancellationRequested)
+            return;
+        foreach (var request in requests.Values)
+            request.TrySetException(new IOException("预览进程已断开。", failure));
+        Disconnected?.Invoke("预览进程已断开。可关闭并重新启动预览器。");
     }
 
-    private static JsonElement Parse(string line)
+    private static async Task<JsonElement> ReadHeaderAsync(NetworkStream stream, byte[] prefix, CancellationToken token)
     {
-        using var document = JsonDocument.Parse(line);
+        await stream.ReadExactlyAsync(prefix, token);
+        var length = BinaryPrimitives.ReadInt32LittleEndian(prefix);
+        if (length is < 2 or > (4 << 20))
+            throw new IOException("预览进程发送了无效的消息长度。");
+        var header = new byte[length];
+        await stream.ReadExactlyAsync(header, token);
+        using var document = JsonDocument.Parse(header);
         return document.RootElement.Clone();
+    }
+
+    private async Task ReadFrameAsync(NetworkStream stream, JsonElement message)
+    {
+        var width = message.GetProperty("width").GetInt32();
+        var height = message.GetProperty("height").GetInt32();
+        if (width is < 8 or > 16384 || height is < 8 or > 16384 || (long)width * height > MaxFramePixels)
+            throw new IOException("预览进程发送了无效的画面尺寸。");
+        var frame = new PreviewFrame(width, height);
+        try
+        {
+            await stream.ReadExactlyAsync(frame.Pixels, lifetime.Token);
+            ConvertToBgra(frame.Pixels.Span);
+            if (FrameReceived is { } handler)
+            {
+                handler(frame);
+                return;
+            }
+        }
+        catch
+        {
+            frame.Dispose();
+            throw;
+        }
+        frame.Dispose();
+    }
+
+    private static void ConvertToBgra(Span<byte> pixels)
+    {
+        foreach (ref uint pixel in MemoryMarshal.Cast<byte, uint>(pixels))
+            pixel = (pixel & 0x0000FF00u) | ((pixel & 0x00FF0000u) >> 16) | ((pixel & 0xFFu) << 16) | 0xFF000000u;
     }
 
     public async ValueTask CloseAsync()
@@ -184,4 +218,14 @@ internal sealed class RendererClient : IDisposable
         worker?.Dispose();
         worker = null;
     }
+}
+
+internal sealed class PreviewFrame(int width, int height) : IDisposable
+{
+    private readonly byte[] buffer = ArrayPool<byte>.Shared.Rent(width * height * 4);
+    public int Width { get; } = width;
+    public int Height { get; } = height;
+    public Memory<byte> Pixels => buffer.AsMemory(0, Width * Height * 4);
+
+    public void Dispose() => ArrayPool<byte>.Shared.Return(buffer);
 }
