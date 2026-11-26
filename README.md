@@ -1,4 +1,4 @@
-# Leonida Motorworks · GTA VI 载具预览器
+# Leonida Customs · GTA VI 载具预览器
 
 Windows x64 上的离线载具查看器。WinUI 3 提供载具库和设置，同一窗口内的白色摄影棚由 Godot 4 渲染，SixNG 读取 Xbox RPF9 载具资源。应用按 GPL-3.0-only 开源。查看游戏内容时，请在本机提供自己的游戏文件。
 

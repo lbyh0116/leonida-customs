@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Runtime.InteropServices.WindowsRuntime;
+using System.Numerics;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -46,6 +47,8 @@ public sealed partial class MainWindow : Window
     private Preferences preferences = new();
     private bool paintable;
     private bool closing;
+    private bool assemblingVehicle;
+    private bool preparingPathFrame;
     private WriteableBitmap? previewBitmap;
     private (int Width, int Height) previewSize;
     private double previewGpuMs;
@@ -61,6 +64,8 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         Shell.ActualThemeChanged += (_, _) => UpdateTitleTheme();
+        foreach (var button in new[] { OpenFolder, SettingsButton, ReadParts, Apply, CopyCode, ImportCode })
+            button.Click += (_, _) => StudioMotion.Pressed(button);
         PaintFinish.SelectionChanged += async (_, _) => await UpdatePaintAsync();
         PaintColor.LostFocus += async (_, _) => await UpdatePaintAsync();
         PaintColor.KeyDown += async (_, args) =>
@@ -91,7 +96,7 @@ public sealed partial class MainWindow : Window
             if (args.WindowActivationState == WindowActivationState.Deactivated && Fly.IsChecked == true)
                 await ExitFlyAsync();
         };
-        Title = "Leonida Motorworks · 载具预览器";
+        Title = "Leonida Customs · 载具预览器";
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "leonida.ico"));
         AppWindow.Closing += async (_, args) =>
         {
@@ -110,6 +115,7 @@ public sealed partial class MainWindow : Window
         if (started)
             return;
         started = true;
+        StudioMotion.Enter(WorkshopMark, new Vector3(-9, 0, 0), 260);
         var scale = Shell.XamlRoot.RasterizationScale;
         var workArea = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary).WorkArea;
         var width = Math.Min((int)Math.Round(1400 * scale), workArea.Width - 24);
@@ -133,6 +139,8 @@ public sealed partial class MainWindow : Window
             renderer.Disconnected += message => DispatcherQueue.TryEnqueue(() =>
             {
                 connected = false;
+                preparingPathFrame = false;
+                UpdatePreviewLoading();
                 SetBusy(false);
                 Report(message, error: true);
             });
@@ -204,7 +212,8 @@ public sealed partial class MainWindow : Window
                     : "拖动旋转 · 右键平移 · 滚轮缩放";
                 break;
             case "path_warmup":
-                PreviewProgress.Visibility = message.GetProperty("active").GetBoolean() ? Visibility.Visible : Visibility.Collapsed;
+                preparingPathFrame = message.GetProperty("active").GetBoolean();
+                UpdatePreviewLoading();
                 break;
             case "timing":
                 previewGpuMs = message.GetProperty("gpu_ms").GetDouble();
@@ -367,6 +376,7 @@ public sealed partial class MainWindow : Window
         PartsNote.Text = vehicle.Configurations.Count == 0
             ? "此车型没有可组装的原厂配置。"
             : "读取配件后，可按安装槽选择模型。";
+        StudioMotion.Enter(VehicleOptions, new Vector3(0, 9, 0), 175);
     }
 
     private async void ReadPartsClicked(object sender, RoutedEventArgs args)
@@ -412,6 +422,8 @@ public sealed partial class MainWindow : Window
             partChoices.Add(combo);
             PartsPanel.Children.Add(combo);
         }
+        if (partChoices.Count > 0)
+            StudioMotion.Enter(PartsPanel, new Vector3(0, 8, 0), 175);
     }
 
     private async void ApplyClicked(object sender, RoutedEventArgs args)
@@ -425,7 +437,18 @@ public sealed partial class MainWindow : Window
     {
         if (selected is not { } vehicle || config < 0)
             return;
-        var reply = await renderer.RequestAsync("preview", new { model = vehicle.Id, config, parts });
+        assemblingVehicle = true;
+        UpdatePreviewLoading();
+        JsonElement reply;
+        try
+        {
+            reply = await renderer.RequestAsync("preview", new { model = vehicle.Id, config, parts });
+        }
+        finally
+        {
+            assemblingVehicle = false;
+            UpdatePreviewLoading();
+        }
         var size = reply.GetProperty("size").EnumerateArray().Select(d => d.GetDouble()).ToArray();
         var issues = reply.GetProperty("issues").GetInt32();
         var baseModel = reply.GetProperty("base").GetBoolean();
@@ -433,9 +456,24 @@ public sealed partial class MainWindow : Window
         displayed = baseModel ? null : new BuildCode(vehicle.Id, config, parts.Order(StringComparer.Ordinal).ToArray());
         ViewTitle.Text = vehicle.Name;
         ViewSubtitle.Text = $"{vehicle.Category}  ·  {vehicle.Subtitle}";
+        StudioMotion.Enter(VehicleHeading, new Vector3(0, 7, 0), 175);
         MeshDetails.Text = $"{reply.GetProperty("meshes").GetInt32()} 组网格 · {size[0]:F2} × {size[1]:F2} × {size[2]:F2} m";
         Report((baseModel ? "已载入基础模型" : "已载入整车预览")
             + (issues > 0 ? $" · SixNG 报告 {issues} 项配件或贴图警告" : ""));
+    }
+
+    private void UpdatePreviewLoading()
+    {
+        bool loading = assemblingVehicle || preparingPathFrame;
+        bool wasVisible = PreviewLoading.Visibility == Visibility.Visible;
+        PreviewLoading.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
+        PreviewSpinner.IsActive = loading && StudioMotion.Enabled;
+        if (loading)
+        {
+            PreviewLoadingText.Text = assemblingVehicle ? "正在组装载具预览…" : "正在准备路径追踪画面…";
+            if (!wasVisible)
+                StudioMotion.Enter(PreviewLoading, new Vector3(0, -6, 0), 160);
+        }
     }
 
     private Task UpdatePaintAsync()
@@ -788,11 +826,12 @@ public sealed partial class MainWindow : Window
     private async void ToggleSettings(object sender, RoutedEventArgs args)
     {
         bool open = SettingsPage.Visibility != Visibility.Visible;
-        if (open && Fly.IsChecked == true)
-            await ExitFlyAsync();
         StudioPage.Visibility = open ? Visibility.Collapsed : Visibility.Visible;
         SettingsPage.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
         SettingsButton.Content = open ? "返回车库" : "设置";
+        StudioMotion.Enter(open ? SettingsPage : StudioPage, new Vector3(open ? 16 : -16, 0, 0));
+        if (open && Fly.IsChecked == true)
+            await ExitFlyAsync();
     }
 
     private void LoadPreferences()

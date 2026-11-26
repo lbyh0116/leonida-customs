@@ -1,9 +1,46 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
-  <rect x="10" y="10" width="236" height="236" rx="53" fill="#142E2C"/>
-  <rect x="18" y="18" width="220" height="220" rx="47" fill="none" stroke="#72C8B4" stroke-width="3"/>
-  <path d="M202 101a68 68 0 0 0-133-9" fill="none" stroke="#FF9470" stroke-width="11" stroke-linecap="round"/>
-  <path d="M52 161h36m-46 19h156m-144 20h118" stroke="#FF9470" stroke-width="7" stroke-linecap="round"/>
-  <path d="M85 129l42-66h31l-43 72h45l-13-15 14-21 35 38-21 32h-72c-25 0-34-19-18-40Z" fill="#FEF4D9"/>
-  <circle cx="169" cy="151" r="8" fill="#142E2C"/>
-  <path d="M49 94h20m-28 19h16m132-41h12m-3-15v27" stroke="#72C8B4" stroke-width="5" stroke-linecap="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="rim" x1="0" y1="0" x2="0.22" y2="1">
+      <stop stop-color="#FFDF9A"/>
+      <stop offset=".28" stop-color="#FF8B7A"/>
+      <stop offset=".62" stop-color="#F65B9D"/>
+      <stop offset="1" stop-color="#7652B3"/>
+    </linearGradient>
+    <linearGradient id="face" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#37204E"/>
+      <stop offset="1" stop-color="#181426"/>
+    </linearGradient>
+    <linearGradient id="sun" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#FFE29D"/>
+      <stop offset=".44" stop-color="#FF9A71"/>
+      <stop offset="1" stop-color="#EF5C9C"/>
+    </linearGradient>
+  </defs>
+  <circle cx="256" cy="256" r="243" fill="#211529"/>
+  <circle cx="256" cy="256" r="232" fill="url(#face)" stroke="url(#rim)" stroke-width="14"/>
+  <circle cx="256" cy="256" r="211" fill="none" stroke="#BE7CA5" stroke-opacity=".48" stroke-width="2"/>
+  <path d="M112 151a177 177 0 0 1 52-49m184 0a177 177 0 0 1 52 49" fill="none" stroke="#B66EA0" stroke-width="3" stroke-linecap="round"/>
+  <path d="M175 187a81 81 0 0 1 162 0Z" fill="url(#sun)"/>
+  <path d="M179 164h154m-158 14h162" stroke="#41234F" stroke-width="4"/>
+  <path d="M213 190l52-69h21l-37 52h18l-19 17Z" fill="#3A244D"/>
+  <path d="M142 193h228" stroke="#F98F96" stroke-width="3" stroke-linecap="round"/>
+
+  <!-- Original compact sign lettering, drawn as paths to keep the icon font-independent. -->
+  <g fill="#FFF2D8" transform="translate(65 220) skewX(-8)">
+    <path d="M8 0h13v49h25v12H8Z"/>
+    <path d="M60 0h39v12H73v12h23v12H73v13h27v12H60Z"/>
+    <path fill-rule="evenodd" d="M130 0h18l12 12v37l-12 12h-18l-12-12V12Zm4 12-3 3v31l3 3h10l3-3V15l-3-3Z"/>
+    <path d="M180 0h13l19 37V0h13v61h-13l-19-36v36h-13Z"/>
+    <path d="M246 0h13v61h-13Z"/>
+    <path fill-rule="evenodd" d="M280 0h30l13 13v35l-13 13h-30Zm13 12v37h12l5-5V17l-5-5Z"/>
+    <path fill-rule="evenodd" d="M360 0h15l17 61h-14l-3-13h-15l-3 13h-14Zm7 17-5 20h10Z"/>
+  </g>
+
+  <path d="M110 309h304l-15 51H95Z" fill="url(#sun)"/>
+  <g fill="none" stroke="#322040" stroke-width="4.5" stroke-linecap="square" stroke-linejoin="round" transform="translate(153 322) skewX(-10)">
+    <path d="M17 0H3L0 4v17l3 4h14m14-25v21l4 4h11l4-4V0m30 0H65l-3 4v6l3 3h11l4 3v5l-4 4H62M93 0h21m-10 0v25m26-25h10l4 4v17l-4 4h-10l-4-4V4Zm29 25V0l11 14 11-14v25m32-25h-15l-4 4v6l4 3h11l4 3v5l-4 4h-15"/>
+  </g>
+  <path d="M161 399h42m106 0h42" stroke="#BB79A6" stroke-width="3" stroke-linecap="round"/>
+  <path d="M236 389h14v14h-14zm14 14h14v14h-14zm14-14h14v14h-14z" fill="#FFB38A"/>
+  <path d="M193 436a170 170 0 0 0 126 0" fill="none" stroke="#9D6597" stroke-width="3" stroke-linecap="round"/>
 </svg>

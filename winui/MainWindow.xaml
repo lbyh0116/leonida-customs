@@ -17,10 +17,10 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <Image Width="52" Height="52" Source="ms-appx:///Assets/leonida-mark.png"
-                   AutomationProperties.Name="Leonida Motorworks" />
+            <Image x:Name="WorkshopMark" Width="55" Height="55" Source="ms-appx:///Assets/leonida-mark.png"
+                   AutomationProperties.Name="Leonida Customs" />
             <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                <TextBlock Text="Leonida Motorworks · 载具预览器" FontSize="23" FontWeight="SemiBold" />
+                <TextBlock Text="Leonida Customs · 改车王" FontSize="23" FontWeight="SemiBold" />
                 <TextBlock x:Name="SourceSummary" Text="等待连接本地游戏目录" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" />
             </StackPanel>
             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
@@ -79,7 +79,7 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <StackPanel>
+                        <StackPanel x:Name="VehicleHeading">
                             <TextBlock x:Name="ViewTitle" Text="白色摄影棚" FontSize="21" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                             <TextBlock x:Name="ViewSubtitle" Text="选择载具即可预览" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" TextTrimming="CharacterEllipsis" />
                         </StackPanel>
@@ -89,8 +89,16 @@
                     </Grid>
                     <Grid Grid.Row="1" x:Name="PreviewSurface" Margin="1,0" Background="{ThemeResource ControlFillColorSecondaryBrush}">
                         <Image x:Name="PreviewImage" Stretch="Uniform" IsHitTestVisible="False" />
-                        <ProgressBar x:Name="PreviewProgress" VerticalAlignment="Top" IsIndeterminate="True" Visibility="Collapsed"
-                                     AutomationProperties.Name="正在准备路径追踪画面" IsHitTestVisible="False" />
+                        <Border x:Name="PreviewLoading" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="12"
+                                Padding="10,7" CornerRadius="15" BorderThickness="1" Visibility="Collapsed"
+                                IsHitTestVisible="False" Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+                            <StackPanel Orientation="Horizontal" Spacing="7">
+                                <ProgressRing x:Name="PreviewSpinner" Width="15" Height="15" IsActive="False" />
+                                <TextBlock x:Name="PreviewLoadingText" FontSize="12" VerticalAlignment="Center"
+                                           AutomationProperties.LiveSetting="Polite" />
+                            </StackPanel>
+                        </Border>
                     </Grid>
                     <Grid Grid.Row="2" Padding="10,8" ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
