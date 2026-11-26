@@ -66,8 +66,8 @@ public sealed partial class MainWindow
         });
         content.Children.Add(new TextBlock { Text = diagnostics, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true });
         var links = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
-        links.Children.Add(new HyperlinkButton { Content = "使用说明", NavigateUri = new Uri("https://github.com/lbyh0116/gta6-vehicle-viewer#readme") });
-        links.Children.Add(new HyperlinkButton { Content = "提交问题", NavigateUri = new Uri("https://github.com/lbyh0116/gta6-vehicle-viewer/issues/new/choose") });
+        links.Children.Add(new HyperlinkButton { Content = "使用说明", NavigateUri = new Uri("https://github.com/lbyh0116/leonida-customs#readme") });
+        links.Children.Add(new HyperlinkButton { Content = "提交问题", NavigateUri = new Uri("https://github.com/lbyh0116/leonida-customs/issues/new/choose") });
         content.Children.Add(links);
         var dialog = new ContentDialog
         {

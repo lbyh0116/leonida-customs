@@ -85,7 +85,7 @@ func _build_ui() -> void:
 	heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	heading.add_theme_constant_override("separation", 0)
 	header.add_child(heading)
-	heading.add_child(_label("GTA VI 载具预览器", 22))
+	heading.add_child(_label("Leonida Customs", 22))
 	heading.add_child(_label("VEHICLE STUDIO", 11, "#b9a6b8"))
 	source_label = _label("未连接游戏目录", 13, "#a8a5b3")
 	source_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER

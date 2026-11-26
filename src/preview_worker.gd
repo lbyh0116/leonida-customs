@@ -30,7 +30,7 @@ func _ready() -> void:
 	if port <= 0 or port > 65535 or _token.length() != 48:
 		get_tree().quit(2)
 		return
-	get_window().title = "车辆摄影棚"
+	get_window().title = "Leonida Customs · 摄影棚"
 	get_window().min_size = Vector2i(1, 1)
 	get_window().borderless = true
 	get_window().position = Vector2i(-20000, -20000)

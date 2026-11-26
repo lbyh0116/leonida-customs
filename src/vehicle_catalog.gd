@@ -22,8 +22,10 @@ static func category(model: String, info: Dictionary, progress_category: String)
 		return CLASS_NAMES[16]
 	if chassis == 5:
 		return CLASS_NAMES[15]
-	if chassis in [7, 8]:
+	if original == 13 or chassis == 8:
 		return CLASS_NAMES[13]
+	if original == 8 or chassis == 7:
+		return CLASS_NAMES[8]
 	if not progress_category.is_empty():
 		return progress_category
 	if original == 11 and (model.begins_with("trailer") or model in TRAILERS):

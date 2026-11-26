@@ -20,7 +20,7 @@
             <Image x:Name="WorkshopMark" Width="55" Height="55" Source="ms-appx:///Assets/leonida-mark.png"
                    AutomationProperties.Name="Leonida Customs" />
             <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                <TextBlock Text="Leonida Customs · 改车王" FontSize="23" FontWeight="SemiBold" />
+                <TextBlock Text="Leonida Customs" FontSize="23" FontWeight="SemiBold" />
                 <TextBlock x:Name="SourceSummary" Text="等待连接本地游戏目录" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" />
             </StackPanel>
             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">

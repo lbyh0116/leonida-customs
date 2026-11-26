@@ -103,7 +103,7 @@ public sealed partial class MainWindow : Window
             if (args.WindowActivationState == WindowActivationState.Deactivated && Fly.IsChecked == true)
                 await ExitFlyAsync();
         };
-        Title = "Leonida Customs · 载具预览器";
+        Title = "Leonida Customs";
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "leonida.ico"));
         AppWindow.Closing += async (_, args) =>
         {
