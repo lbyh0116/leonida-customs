@@ -127,23 +127,31 @@
                         <StackPanel Spacing="9" Padding="4,0,5,0">
                             <TextBlock Text="原厂配置" FontWeight="SemiBold" />
                             <ComboBox x:Name="Factory" HorizontalAlignment="Stretch"
-                                      AutomationProperties.Name="原厂配置" />
-                            <ComboBox x:Name="PaintFinish" Header="车漆预览" HorizontalAlignment="Stretch"
-                                      SelectedIndex="0" IsEnabled="False">
-                                <x:String>原厂漆面</x:String>
-                                <x:String>亮光实色</x:String>
-                                <x:String>金属漆</x:String>
-                                <x:String>哑光</x:String>
-                                <x:String>珠光</x:String>
-                            </ComboBox>
-                            <TextBox x:Name="PaintColor" Header="自定义漆色" PlaceholderText="原车颜色或 #RRGGBB"
-                                     MaxLength="7" IsEnabled="False" />
+                                      AutomationProperties.Name="原厂配置" SelectionChanged="FactoryChanged" />
+                            <TextBlock Text="车辆数据" FontWeight="SemiBold" Margin="0,7,0,0" />
+                            <TextBlock x:Name="VehicleInfo" FontSize="12" TextWrapping="Wrap"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <StackPanel x:Name="PerformancePanel" Spacing="5" />
                             <Grid Margin="0,6,0,0">
                                 <TextBlock Text="改装配件" FontWeight="SemiBold" VerticalAlignment="Center" />
-                                <Button x:Name="ReadParts" Content="读取配件" HorizontalAlignment="Right" Click="ReadPartsClicked" />
+                                <Button x:Name="ReadParts" Content="重试读取" Visibility="Collapsed" HorizontalAlignment="Right" Click="ReadPartsClicked" />
                             </Grid>
                             <TextBlock x:Name="PartsNote" Text="选择载具后可查看可用配件。" FontSize="12"
                                        TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <Expander Header="车漆" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                                <StackPanel Spacing="8">
+                                    <ComboBox x:Name="PaintFinish" Header="车漆预览" HorizontalAlignment="Stretch"
+                                              SelectedIndex="0" IsEnabled="False">
+                                        <x:String>原厂漆面</x:String>
+                                        <x:String>亮光实色</x:String>
+                                        <x:String>金属漆</x:String>
+                                        <x:String>哑光</x:String>
+                                        <x:String>珠光</x:String>
+                                    </ComboBox>
+                                    <TextBox x:Name="PaintColor" Header="自定义漆色" PlaceholderText="原车颜色或 #RRGGBB"
+                                             MaxLength="7" IsEnabled="False" />
+                                </StackPanel>
+                            </Expander>
                             <StackPanel x:Name="PartsPanel" Spacing="9" />
                         </StackPanel>
                     </ScrollViewer>

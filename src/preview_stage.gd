@@ -3,11 +3,9 @@ extends SubViewportContainer
 signal free_view_changed(active: bool)
 
 const FLOOR_SHADER := preload("res://src/render_studio_floor.gdshader")
-const STRIP_SHADER := preload("res://src/studio_strip.gdshader")
 const VehicleMaterials := preload("res://src/vehicle_materials.gd")
-const STRIP_SIZE := Vector2(0.24, 7.2)
-const STRIP_HEIGHT := 3.35
-const STRIP_OFFSETS := [-2.35, -0.78, 0.78, 2.35]
+const PANEL_SIZE := Vector2(5.5, 7.2)
+const PANEL_HEIGHT := 3.35
 
 var stage: Node3D
 var viewport: SubViewport
@@ -18,10 +16,13 @@ var _path_floor: StandardMaterial3D
 var _raster_floor_mesh: PlaneMesh
 var _path_floor_mesh: ArrayMesh
 var _path_tracing := false
-var _fill: Array[AreaLight3D] = []
-var _strip_material: ShaderMaterial
+var _panel: AreaLight3D
 var _mirror_view: SubViewport
 var _mirror_camera: Camera3D
+var _mirror_transform := Transform3D.IDENTITY
+var _mirror_active := false
+var _mirror_dirty := true
+var _mirror_updated := false
 var _reflections := true
 var _painted_surfaces: Array[ShaderMaterial] = []
 var _vehicle_lamps: Array[BaseMaterial3D] = []
@@ -72,7 +73,7 @@ func _ready() -> void:
 	_key.light_angular_distance = _lighting.size
 	_key.directional_shadow_max_distance = 38.0
 	stage.add_child(_key)
-	_add_strips()
+	_add_light_panel()
 	_raster_floor_mesh = PlaneMesh.new()
 	_raster_floor_mesh.size = Vector2(400, 400)
 	_floor_material = ShaderMaterial.new()
@@ -118,12 +119,11 @@ func _add_environment() -> void:
 			var longitude := TAU * (float(x) + 0.5) / 512.0
 			var horizontal := Vector2(sin(longitude), -cos(longitude)) * sin(latitude)
 			if direction_y > 0.15:
-				var ceiling := horizontal * (STRIP_HEIGHT / direction_y)
-				for offset: float in STRIP_OFFSETS:
-					var distance_x := absf(ceiling.x - offset)
-					var width := 1.0 - smoothstep(0.07, 0.19, distance_x)
-					var length := 1.0 - smoothstep(3.50, 3.65, absf(ceiling.y))
-					colour += Color(4.9, 5.0, 5.2) * width * length
+				var ceiling := (horizontal * (PANEL_HEIGHT / direction_y)).abs()
+				var edge := PANEL_SIZE * 0.5
+				var width := 1.0 - smoothstep(edge.x - 0.13, edge.x, ceiling.x)
+				var length := 1.0 - smoothstep(edge.y - 0.15, edge.y, ceiling.y)
+				colour += Color(2.05, 2.15, 2.3) * width * length
 			# The long white walls give curved panels and polished metal a
 			# continuous highlight, with no fill light aimed into the cavities.
 			if absf(horizontal.x) > 0.15:
@@ -133,6 +133,7 @@ func _add_environment() -> void:
 				colour += Color(2.35, 2.49, 2.68) * height * length
 			colour.a = 1.0
 			image.set_pixel(x, y, colour)
+	# The sky supplies the overhead reflection while the area light lights the stage.
 	var panorama := PanoramaSkyMaterial.new()
 	panorama.panorama = ImageTexture.create_from_image(image)
 	var sky := Sky.new()
@@ -142,29 +143,17 @@ func _add_environment() -> void:
 	stage.add_child(world)
 
 
-func _add_strips() -> void:
-	_strip_material = ShaderMaterial.new()
-	_strip_material.shader = STRIP_SHADER
-	var diffuser := BoxMesh.new()
-	diffuser.size = Vector3(STRIP_SIZE.x, 0.025, STRIP_SIZE.y)
-	for offset: float in STRIP_OFFSETS:
-		var light := AreaLight3D.new()
-		light.position = Vector3(offset, STRIP_HEIGHT, 0.0)
-		light.rotation_degrees.x = -90.0
-		light.light_color = Color("#edf4ff")
-		light.area_size = STRIP_SIZE
-		light.area_range = 12.0
-		light.shadow_enabled = true
-		light.shadow_bias = 0.035
-		light.shadow_normal_bias = 0.24
-		stage.add_child(light)
-		_fill.append(light)
-		var fixture := MeshInstance3D.new()
-		fixture.position = light.position
-		fixture.mesh = diffuser
-		fixture.material_override = _strip_material
-		fixture.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		stage.add_child(fixture)
+func _add_light_panel() -> void:
+	_panel = AreaLight3D.new()
+	_panel.position = Vector3(0.0, PANEL_HEIGHT, 0.0)
+	_panel.rotation_degrees.x = -90.0
+	_panel.light_color = Color("#edf4ff")
+	_panel.area_size = PANEL_SIZE
+	_panel.area_range = 12.0
+	_panel.shadow_enabled = true
+	_panel.shadow_bias = 0.035
+	_panel.shadow_normal_bias = 0.24
+	stage.add_child(_panel)
 
 
 func _add_floor_reflection() -> void:
@@ -189,22 +178,34 @@ func _add_floor_reflection() -> void:
 
 func _resize_floor_reflection() -> void:
 	_mirror_view.size = (viewport.size / 2).max(Vector2i(4, 4))
+	_mirror_dirty = true
 
 
 func _update_floor_reflection() -> void:
+	_mirror_updated = false
 	var active := _reflections and not _path_tracing and model != null and camera.position.y > camera.near
-	if active:
-		var reflected := camera.global_transform
-		reflected.origin.y = -reflected.origin.y
-		reflected.basis.x *= Vector3(-1.0, 1.0, -1.0)
-		reflected.basis.y.y = -reflected.basis.y.y
-		reflected.basis.z.y = -reflected.basis.z.y
-		_mirror_camera.global_transform = reflected
-		_mirror_camera.fov = camera.fov
-		_mirror_camera.near = camera.near
-		_mirror_camera.far = camera.far
-	_mirror_view.render_target_update_mode = SubViewport.UPDATE_ALWAYS if active else SubViewport.UPDATE_DISABLED
-	_floor_parameter("show_reflection", active)
+	if active != _mirror_active:
+		_mirror_active = active
+		_floor_parameter("show_reflection", active)
+		_mirror_dirty = true
+	if not active:
+		return
+	var current := camera.global_transform
+	if not _mirror_dirty and _mirror_transform.is_equal_approx(current):
+		return
+	_mirror_dirty = false
+	_mirror_updated = true
+	_mirror_transform = current
+	var reflected := current
+	reflected.origin.y = -reflected.origin.y
+	reflected.basis.x *= Vector3(-1.0, 1.0, -1.0)
+	reflected.basis.y.y = -reflected.basis.y.y
+	reflected.basis.z.y = -reflected.basis.z.y
+	_mirror_camera.global_transform = reflected
+	_mirror_camera.fov = camera.fov
+	_mirror_camera.near = camera.near
+	_mirror_camera.far = camera.far
+	_mirror_view.render_target_update_mode = SubViewport.UPDATE_ONCE
 
 
 func render_capabilities() -> Dictionary:
@@ -288,7 +289,7 @@ func set_quality(aa: int, scale: float) -> void:
 
 func gpu_frame_ms() -> float:
 	var main := RenderingServer.viewport_get_measured_render_time_gpu(viewport.get_viewport_rid())
-	if _mirror_view.render_target_update_mode == SubViewport.UPDATE_ALWAYS:
+	if _mirror_updated:
 		main += RenderingServer.viewport_get_measured_render_time_gpu(_mirror_view.get_viewport_rid())
 	return main
 
@@ -321,9 +322,8 @@ func set_lighting(options: Dictionary) -> void:
 	_key.light_specular = options.specular
 	_key.rotation_degrees = Vector3(-options.elevation, options.azimuth, 0.0)
 	_key.light_angular_distance = options.size
-	for panel in _fill:
-		panel.light_energy = options.fill
-	_strip_material.set_shader_parameter("brightness", options.fill * 3.5)
+	_panel.light_energy = options.fill
+	_mirror_dirty = true
 	environment.ambient_light_energy = options.ambient
 	_mirror_camera.environment.ambient_light_energy = options.ambient
 	environment.tonemap_exposure = options.exposure
@@ -412,6 +412,7 @@ func show_model(path: String) -> Dictionary:
 
 
 func set_paint(finish: int, color: String) -> void:
+	_mirror_dirty = true
 	_paint_finish = clampi(finish, 0, 4)
 	_paint_color = color
 	var custom_color := color.length() == 7 and color.begins_with("#") and Color.html_is_valid(color)
@@ -423,6 +424,7 @@ func set_paint(finish: int, color: String) -> void:
 
 
 func set_vehicle_lamps(enabled: bool) -> void:
+	_mirror_dirty = true
 	_lamps_enabled = enabled
 	for material in _vehicle_lamps:
 		material.emission_enabled = enabled

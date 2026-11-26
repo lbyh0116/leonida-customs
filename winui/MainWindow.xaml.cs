@@ -309,6 +309,8 @@ public sealed partial class MainWindow : Window
             partsLoaded = false;
             SourceSummary.Text = "Xbox RPF9 · 本地只读";
             ToolTipService.SetToolTip(SourceSummary, response.GetProperty("game").GetString());
+            VehicleInfo.Text = "";
+            PerformancePanel.Children.Clear();
             CatalogNote.Text = response.GetProperty("unnamed").GetInt32() is var unnamed && unnamed > 0
                 ? $"另有 {unnamed} 条记录未恢复名称。"
                 : "所有资源均来自本机。";
@@ -321,7 +323,7 @@ public sealed partial class MainWindow : Window
             if ((vehicles.FirstOrDefault(v => v.Id == "comet7") ?? vehicles.FirstOrDefault()) is { } first)
             {
                 SelectVehicle(first);
-                await RenderAsync(0, []);
+                await LoadPartsAndRenderAsync(first, 0);
             }
         });
     }
@@ -337,7 +339,7 @@ public sealed partial class MainWindow : Window
         var category = Category.SelectedIndex > 0 ? Category.SelectedItem as string : null;
         var filtered = vehicles.Where(v =>
             (category is null || v.Category == category) &&
-            (query.Length == 0 || (v.Name + " " + v.Make + " " + v.Id).Contains(query, StringComparison.OrdinalIgnoreCase)))
+            (query.Length == 0 || (v.Name + " " + v.Make + " " + v.EnglishName + " " + v.EnglishMake + " " + v.Id).Contains(query, StringComparison.OrdinalIgnoreCase)))
             .OrderBy(v => v.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
         populating = true;
         VehicleList.ItemsSource = filtered;
@@ -351,16 +353,15 @@ public sealed partial class MainWindow : Window
         if (populating || busy || VehicleList.SelectedItem is not Vehicle vehicle || vehicle == selected)
             return;
         SelectVehicle(vehicle);
-        await RunAssetActionAsync("正在生成整车预览…", () => RenderAsync(0, []));
+        await RunAssetActionAsync("正在读取配置和改装配件…", () => LoadPartsAndRenderAsync(vehicle, 0));
     }
 
     private void SelectVehicle(Vehicle vehicle)
     {
         selected = vehicle;
         populating = true;
-        VehicleList.SelectedItem = vehicle;
-        VehicleList.ScrollIntoView(vehicle);
-        populating = false;
+        Search.Text = "";
+        Category.SelectedItem = vehicle.Category;
         Factory.Items.Clear();
         for (var i = 0; i < vehicle.Configurations.Count; i++)
         {
@@ -370,25 +371,94 @@ public sealed partial class MainWindow : Window
         if (Factory.Items.Count == 0)
             Factory.Items.Add("基础模型");
         Factory.SelectedIndex = 0;
+        populating = false;
+        RefreshVehicles();
+        VehicleList.ScrollIntoView(vehicle);
+        ShowVehicleData(vehicle);
         PartsPanel.Children.Clear();
         partChoices.Clear();
         partsLoaded = false;
+        ReadParts.Visibility = Visibility.Collapsed;
         PartsNote.Text = vehicle.Configurations.Count == 0
             ? "此车型没有可组装的原厂配置。"
-            : "读取配件后，可按安装槽选择模型。";
+            : "正在读取可用配件…";
         StudioMotion.Enter(VehicleOptions, new Vector3(0, 9, 0), 175);
+    }
+
+    private void ShowVehicleData(Vehicle vehicle)
+    {
+        var data = new List<string>();
+        if (vehicle.Drive is { Length: > 0 } drive)
+            data.Add(drive);
+        if (vehicle.Gears is > 0)
+            data.Add($"{vehicle.Gears} 速");
+        if (vehicle.Mass is > 0)
+            data.Add($"{vehicle.Mass:N0} kg");
+        if (vehicle.RoadRating.HasValue)
+            data.Add($"公路评级 {vehicle.RoadRating}");
+        if (vehicle.DirtRating.HasValue)
+            data.Add($"越野评级 {vehicle.DirtRating}");
+        VehicleInfo.Text = data.Count == 0 ? "暂无本地车辆数据" : string.Join(" · ", data);
+        PerformancePanel.Children.Clear();
+        var ratings = new (string Name, double? Value)[]
+        {
+            ("速度", vehicle.Speed),
+            ("加速", vehicle.Acceleration),
+            ("柏油路操控性", vehicle.RoadHandling),
+            ("越野操控性", vehicle.OffroadHandling),
+            ("强度", vehicle.Strength)
+        };
+        foreach (var (name, value) in ratings)
+        {
+            var row = new Grid();
+            row.Children.Add(new TextBlock { Text = name, FontSize = 12 });
+            row.Children.Add(new TextBlock { Text = value is double score ? score.ToString("F1") : "—",
+                FontSize = 12, HorizontalAlignment = HorizontalAlignment.Right });
+            var bar = new ProgressBar { Minimum = 0, Maximum = 10, Value = value ?? 0, Opacity = value.HasValue ? 1 : .5 };
+            PerformancePanel.Children.Add(row);
+            PerformancePanel.Children.Add(bar);
+        }
+    }
+
+    private async void FactoryChanged(object sender, SelectionChangedEventArgs args)
+    {
+        if (populating || busy || selected is not { } vehicle || Factory.SelectedIndex < 0)
+            return;
+        int index = Factory.SelectedIndex;
+        await RunAssetActionAsync("正在加载原厂配置和改装配件…", () => LoadPartsAndRenderAsync(vehicle, index));
+    }
+
+    private async Task LoadPartsAndRenderAsync(Vehicle vehicle, int config)
+    {
+        if (vehicle.Configurations.Count > 0)
+            await LoadPartsForConfigAsync(vehicle, config);
+        await RenderAsync(config, []);
+    }
+
+    private async Task LoadPartsForConfigAsync(Vehicle vehicle, int config)
+    {
+        PartsNote.Text = "正在读取可用配件…";
+        PartsPanel.Children.Clear();
+        partChoices.Clear();
+        partsLoaded = false;
+        ReadParts.Visibility = Visibility.Collapsed;
+        try
+        {
+            ShowParts(await GetPartsAsync(vehicle), [], config);
+        }
+        catch (InvalidOperationException ex)
+        {
+            PartsNote.Text = "读取配件失败 · " + ex.Message;
+            ReadParts.Visibility = Visibility.Visible;
+        }
     }
 
     private async void ReadPartsClicked(object sender, RoutedEventArgs args)
     {
-        if (selected is not { } vehicle)
+        if (selected is not { } vehicle || Factory.SelectedIndex < 0)
             return;
-        await RunAssetActionAsync("正在读取可用配件…", async () =>
-        {
-            var options = await GetPartsAsync(vehicle);
-            ShowParts(options, []);
-            Report($"已读取 {options.Count} 个可用配件。");
-        });
+        int config = Factory.SelectedIndex;
+        await RunAssetActionAsync("正在读取可用配件…", () => LoadPartsForConfigAsync(vehicle, config));
     }
 
     private async Task<List<PartOption>> GetPartsAsync(Vehicle vehicle)
@@ -397,7 +467,7 @@ public sealed partial class MainWindow : Window
         return reply.GetProperty("parts").Deserialize<List<PartOption>>(JsonOptions) ?? [];
     }
 
-    private void ShowParts(List<PartOption> parts, string[] picks)
+    private void ShowParts(List<PartOption> parts, string[] picks, int config)
     {
         PartsPanel.Children.Clear();
         partChoices.Clear();
@@ -408,7 +478,11 @@ public sealed partial class MainWindow : Window
             var slot = group.First().SlotName?.Replace('_', ' ') ?? $"安装槽 {group.Key}";
             PartsPanel.Children.Add(new TextBlock { Text = slot, FontSize = 12 });
             var combo = new ComboBox { HorizontalAlignment = HorizontalAlignment.Stretch };
-            combo.Items.Add(new ComboBoxItem { Content = "沿用原厂配置", Tag = "" });
+            var stockPart = group.FirstOrDefault(part => part.StockConfigs?.Contains(config) == true);
+            var stockLabel = stockPart?.Label;
+            if (stockLabel is { Length: > 24 })
+                stockLabel = stockLabel[..24] + "…";
+            combo.Items.Add(new ComboBoxItem { Content = stockLabel is null ? "沿用原厂配置" : $"原厂 · {stockLabel}", Tag = "" });
             combo.SelectedIndex = 0;
             foreach (var part in group)
             {
@@ -458,8 +532,12 @@ public sealed partial class MainWindow : Window
         ViewSubtitle.Text = $"{vehicle.Category}  ·  {vehicle.Subtitle}";
         StudioMotion.Enter(VehicleHeading, new Vector3(0, 7, 0), 175);
         MeshDetails.Text = $"{reply.GetProperty("meshes").GetInt32()} 组网格 · {size[0]:F2} × {size[1]:F2} × {size[2]:F2} m";
+        var requestedWarnings = reply.GetProperty("requestedWarnings").EnumerateArray()
+            .Select(warning => warning.GetString()).OfType<string>().ToArray();
+        ToolTipService.SetToolTip(MeshDetails, requestedWarnings.Length == 0 ? null : string.Join("\n", requestedWarnings));
         Report((baseModel ? "已载入基础模型" : "已载入整车预览")
-            + (issues > 0 ? $" · SixNG 报告 {issues} 项配件或贴图警告" : ""));
+            + (requestedWarnings.Length > 0 ? $" · 所选配件有 {requestedWarnings.Length} 个组件未装上" :
+                issues > 0 ? $" · SixNG 报告 {issues} 项配件或贴图警告" : ""));
     }
 
     private void UpdatePreviewLoading()
@@ -519,7 +597,7 @@ public sealed partial class MainWindow : Window
             var code = ParseCode(box.Text);
             var vehicle = vehicles.FirstOrDefault(v => v.Id == code.Model && code.Config < v.Configurations.Count)
                 ?? throw new InvalidOperationException("本地目录中找不到这个车型或配置。");
-            var options = code.Parts.Length == 0 ? [] : await GetPartsAsync(vehicle);
+            List<PartOption> options = code.Parts.Length > 0 ? await GetPartsAsync(vehicle) : [];
             var slots = new HashSet<string>();
             foreach (var pick in code.Parts)
             {
@@ -527,12 +605,12 @@ public sealed partial class MainWindow : Window
                 if (option is null || !slots.Add(option.Slot))
                     throw new InvalidOperationException("改车码中有不可用或占用同一安装槽的配件。");
             }
-            Search.Text = "";
-            Category.SelectedIndex = 0;
             SelectVehicle(vehicle);
             Factory.SelectedIndex = code.Config;
-            if (options.Count > 0)
-                ShowParts(options, code.Parts);
+            if (code.Parts.Length == 0)
+                await LoadPartsForConfigAsync(vehicle, code.Config);
+            else
+                ShowParts(options, code.Parts, code.Config);
             await RenderAsync(code.Config, code.Parts);
             Report("已应用改车码。");
         });
@@ -631,7 +709,7 @@ public sealed partial class MainWindow : Window
             ]);
         }
         if (dlssAvailable)
-            methods.Add(new(AaMethod.Dlss, "NVIDIA DLSS"));
+            methods.Add(new(AaMethod.Dlss, "NVIDIA DLSS 4.5"));
 
         aaMethods = methods;
         Antialias.ItemsSource = methods.Select(choice => choice.Label).ToArray();
@@ -962,13 +1040,16 @@ public sealed partial class MainWindow : Window
         Progress.Value = Math.Max(0, progress);
     }
 
-    public sealed record Vehicle(string Id, string Name, string Make, string Category, List<FactoryOption> Configurations)
+    public sealed record Vehicle(string Id, string Name, string Make, string Category, List<FactoryOption> Configurations,
+        string? EnglishName, string? EnglishMake, string? Drive, int? Gears, double? Mass,
+        double? Speed, double? Acceleration, double? RoadHandling, double? OffroadHandling,
+        double? Strength, int? RoadRating, int? DirtRating)
     {
         public string Subtitle => string.IsNullOrEmpty(Make) ? Id : $"{Make} · {Id}";
     }
 
     public sealed record FactoryOption(string? Color, int Count);
-    private sealed record PartOption(string Id, string Slot, [property: System.Text.Json.Serialization.JsonPropertyName("slot_name")] string? SlotName, string Label);
+    private sealed record PartOption(string Id, string Slot, [property: System.Text.Json.Serialization.JsonPropertyName("slot_name")] string? SlotName, string Label, int[]? StockConfigs);
     private sealed record BuildCode(string Model, int Config, string[] Parts);
     private enum AaMethod { None = 0, Fxaa = 1, Smaa = 2, Taa = 3, Msaa = 4, Fsr2 = 7, Dlss = 8 }
     private sealed record AaChoice(AaMethod Method, string Label);

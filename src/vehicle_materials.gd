@@ -55,8 +55,10 @@ func apply(geometries: Array[Node], state: GLTFState, path: String, bounds: AABB
 			var kind := str(classification.get("stand_in", ""))
 			var family := str(classification.get("family", ""))
 			var material_class := str(classification.get("class", ""))
-			var vehicle_lamp := material_class == "emissive" and (
-				family.contains("vehicle lamps") or str(extras.get("shader_name", "")).begins_with("standard_vehicle_emissive"))
+			var lamp_shader := family.contains("vehicle lamps") or str(extras.get("shader_name", "")).begins_with("standard_vehicle_emissive")
+			var node_name := str(node.name).to_lower()
+			var accessory_light := node_name.contains("lightbar") or node_name.contains("siren") or node_name.contains("neon") or node_name.contains("underglow")
+			var vehicle_lamp := original.emission_enabled and (lamp_shader or accessory_light)
 			var lamp_lens := material_class == "glass" and family.contains("vehicle lamp")
 			var window_glass := material_class == "window"
 			var occlusion := _vehicle_occlusion(extras)
@@ -75,7 +77,7 @@ func apply(geometries: Array[Node], state: GLTFState, path: String, bounds: AABB
 						backed_wheels[wheel] = true
 						_add_missing_wheel_backing(node, wheel_extent, vehicle_midline)
 					continue
-			if kind == "parts" and has_colours and original.transparency in [BaseMaterial3D.TRANSPARENCY_DISABLED, BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR]:
+			if kind == "parts" and has_colours and not original.emission_enabled and original.transparency in [BaseMaterial3D.TRANSPARENCY_DISABLED, BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR]:
 				var body := _body_material(original, occlusion, bounds)
 				node.set_surface_override_material(surface, body)
 				_track_primary_paint(body, colours)
@@ -88,8 +90,16 @@ func apply(geometries: Array[Node], state: GLTFState, path: String, bounds: AABB
 				material.ao_texture = occlusion
 				material.ao_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_BLUE
 				material.ao_light_affect = 0.85
-			if vehicle_lamp and material.emission_texture != null:
-				material.emission_energy_multiplier = 1.4
+			if vehicle_lamp:
+				var emission: Variant = extras.get("emissive_strength")
+				if lamp_shader and material.emission_texture != null:
+					# Keep authored tint and strong emitters. Low-intensity game
+					# lamps use the studio's visible on-state presentation.
+					if emission is Dictionary and float(emission.get("strength", 0)) < 1.0:
+						var tint: Variant = emission.get("tint")
+						if tint is Array and tint.size() == 3:
+							material.emission = Color(float(tint[0]), float(tint[1]), float(tint[2])).linear_to_srgb()
+					material.emission_energy_multiplier = maxf(material.emission_energy_multiplier, 1.4)
 				vehicle_lamps.append(material)
 			if lamp_lens or window_glass:
 				var tint := material.albedo_color

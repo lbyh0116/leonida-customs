@@ -221,6 +221,7 @@ func _run_asset_command(command: String, data: Dictionary) -> Dictionary:
 			var size: Vector3 = asset.size
 			return {
 				"ok": true, "meshes": asset.meshes, "size": [size.x, size.y, size.z], "paintable": asset.paintable,
-				"issues": int(result.asset.get("issues", 0)), "base": result.asset.get("base", false)
+				"issues": int(result.asset.get("issues", 0)), "base": result.asset.get("base", false),
+				"requestedWarnings": result.asset.get("requestedWarnings", [])
 			}
 	return {"ok": false, "error": "未知的资源命令。"}

@@ -1,8 +1,8 @@
 $ErrorActionPreference = 'Stop'
-$Version = '0.9.0'
+$Version = '0.11.0'
 $Name = "SixNG-v$Version-windows-x64"
 $Url = "https://github.com/holdmysocks/SixNG/releases/download/v$Version/$Name.zip"
-$Sha256 = 'C9D21B1C2538DF047E9262D1FF2E63C8F52749E7A5059AE792310ACFA71415AA'
+$Sha256 = '3077EBEFFB9428BF09BF7EBC0D9A5D75F7CBBE1AAEA62213B4FFE1654303F673'
 $ToolDirectory = $PSScriptRoot
 $WorkDirectory = Join-Path (Split-Path -Parent $ToolDirectory) 'work'
 $Destination = Join-Path $ToolDirectory $Name

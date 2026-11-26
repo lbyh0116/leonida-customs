@@ -3,12 +3,10 @@ extends Node
 signal progress(message: String, percent: float)
 
 const REQUIRED := ["levels.rpf", "packs.rpf", "data.rpf"]
-const SIXNG_FOLDER := "SixNG-v0.9.0-windows-x64"
-const CLASS_NAMES := [
-	"紧凑型", "轿车", "SUV", "双门轿跑", "肌肉车", "经典跑车", "跑车", "超级跑车",
-	"摩托车", "越野车", "工业车辆", "多用途车", "厢式车", "自行车", "船艇", "直升机",
-	"飞机", "服务车辆", "应急车辆", "军用车辆", "商用车辆", "轨道车辆", "开轮赛车"
-]
+const SIXNG_FOLDER := "SixNG-v0.11.0-windows-x64"
+const PREVIOUS_SIXNG_FOLDER := "SixNG-v0.9.0-windows-x64"
+const VEHICLE_CATALOG := preload("res://src/vehicle_catalog.gd")
+const VEHICLE_PROGRESS := preload("res://src/vehicle_progress.gd")
 const HASH_PATTERN := "^[0-9a-f]{8}$"
 const MODEL_PATTERN := "^[a-z0-9_]{1,80}$"
 
@@ -20,6 +18,7 @@ var stamp := ""
 var vehicles: Dictionary = {}
 var unnamed := 0
 var _parts: Dictionary = {}
+var _stock: Dictionary = {}
 var _pid := 0
 
 
@@ -72,6 +71,10 @@ func load_source(path: String) -> Dictionary:
 	var previous := _read_dictionary(marker_path)
 	var output := folder.path_join("vehicles/vehicles.json")
 	var can_use_cache: bool = previous.get("stamp") == signature
+	var can_reuse_index: bool = can_use_cache or previous.get("stamp") == JSON.stringify(
+		[PREVIOUS_SIXNG_FOLDER, archive_fields]).sha256_text()
+	for name in REQUIRED:
+		can_reuse_index = can_reuse_index and FileAccess.file_exists(folder.path_join("index/%s.json" % name.get_basename()))
 	# A catalog prepared by the same CLI can be used on first launch.
 	if previous.is_empty() and FileAccess.file_exists(output):
 		can_use_cache = FileAccess.get_modified_time(output) > last_modified
@@ -82,10 +85,11 @@ func load_source(path: String) -> Dictionary:
 		var create := DirAccess.make_dir_recursive_absolute(folder)
 		if create != OK:
 			return _error("无法在工作目录写入索引。")
-		progress.emit("正在扫描 RPF9 档案", -1.0)
-		var indexed := await _run(normalized, folder, ["index", "packs", "data", "levels"])
-		if not indexed.get("ok", false):
-			return indexed
+		if not can_reuse_index:
+			progress.emit("正在扫描 RPF9 档案", -1.0)
+			var indexed := await _run(normalized, folder, ["index", "packs", "data", "levels"])
+			if not indexed.get("ok", false):
+				return indexed
 		progress.emit("正在整理载具目录", -1.0)
 		var result := await _run(normalized, folder, ["vehicles", "packs", "--out", folder])
 		if not result.get("ok", false):
@@ -93,26 +97,52 @@ func load_source(path: String) -> Dictionary:
 		catalog = _read_dictionary(output)
 	if not catalog.get("vehicles") is Array:
 		return _error("SixNG 没有生成可读的载具目录。")
+	var details := await _load_catalog_details(normalized, folder, signature, catalog.vehicles)
+	var local_names: Dictionary = details.get("labels", {})
+	var handling: Dictionary = details.get("handling", {})
+	var progress_cards: Dictionary = details.get("cardsV2", {})
 	var records: Dictionary = {}
+	var stock: Dictionary = {}
 	var unresolved := 0
 	for record: Dictionary in catalog.vehicles:
 		if not matches_pattern(record.get("model"), MODEL_PATTERN):
 			unresolved += 1
 			continue
+		var info: Dictionary = record.get("model_info") if record.get("model_info") is Dictionary else {}
+		var english_name: String = record.get("display_name") if record.get("display_name") is String else record.model
+		var english_make: String = record.get("make") if record.get("make") is String else ""
+		var name_hash := VEHICLE_CATALOG.label_hash(info.get("gameName"))
+		var make_hash := VEHICLE_CATALOG.label_hash(info.get("vehicleMakeName"))
+		var handling_hash := VEHICLE_CATALOG.label_hash(info.get("handlingId"))
+		var card: Dictionary = progress_cards.get(record.model, {})
 		var configurations: Array = []
+		var stock_parts: Array[Dictionary] = []
 		for config: Dictionary in record.get("configurations", []):
 			var colour: Variant = config.get("colour")
 			configurations.append({
 				"color": str(colour.get("srgb_if_linear", colour.get("rgb", ""))) if colour is Dictionary else "",
 				"count": config.get("parts", []).size()
 			})
+			var part_keys := {}
+			for part: Variant in config.get("parts", []):
+				if part is String:
+					part_keys[VEHICLE_CATALOG.part_hash(part)] = true
+			stock_parts.append(part_keys)
+		stock[record.model] = stock_parts
 		records[record.model] = {
 			"id": record.model,
-			"name": record.get("display_name", record.model),
-			"make": record.get("make", ""),
-			"category": _category(record.get("model_info")),
+			"name": local_names.get(name_hash, english_name),
+			"make": local_names.get(make_hash, english_make),
+			"englishName": english_name,
+			"englishMake": english_make,
+			"category": VEHICLE_CATALOG.category(record.model, info, card.get("category", "")),
 			"configurations": configurations
 		}
+		records[record.model].merge(handling.get(handling_hash, {}))
+		records[record.model].merge(card)
+		for field in ["gears", "roadRating", "dirtRating"]:
+			if records[record.model].has(field):
+				records[record.model][field] = int(records[record.model][field])
 	if records.is_empty():
 		return _error("目录中没有已恢复模型名称的载具。")
 	_write_dictionary(marker_path, {"stamp": signature})
@@ -123,6 +153,7 @@ func load_source(path: String) -> Dictionary:
 	vehicles = records
 	unnamed = unresolved
 	_parts.clear()
+	_stock = stock
 	return {"ok": true}
 
 
@@ -144,9 +175,14 @@ func list_parts(model: String) -> Dictionary:
 				names.append(asset)
 		if names.is_empty():
 			continue
+		var stock_configs: Array[int] = []
+		var configurations: Array = _stock.get(model, [])
+		for index in configurations.size():
+			if configurations[index].has(part.part):
+				stock_configs.append(index)
 		available.append({
 			"id": part.part, "slot": part.slot, "slot_name": part.slot_name,
-			"label": " · ".join(names)
+			"label": " · ".join(names), "stockConfigs": stock_configs
 		})
 	_parts[model] = available
 	return {"ok": true, "parts": available}
@@ -176,7 +212,7 @@ func preview(model: String, config: int, selection: Array) -> Dictionary:
 			slots[slot] = true
 	var picks := selection.duplicate()
 	picks.sort()
-	var key := JSON.stringify([stamp, model, config, picks]).sha256_text().left(24)
+	var key := JSON.stringify([stamp, "warnings-v1", model, config, picks]).sha256_text().left(24)
 	var folder := source_dir.path_join("models").path_join(key)
 	var path := folder.path_join("vehicle.glb")
 	var info_path := folder.path_join("preview.json")
@@ -195,7 +231,17 @@ func preview(model: String, config: int, selection: Array) -> Dictionary:
 	if DirAccess.rename_absolute(building, path) != OK:
 		return _error("无法保存整车 GLB 缓存。")
 	var exported: Dictionary = result.get("result", {})
+	var requested_warnings: Array[String] = []
+	for field in ["not_fitted", "left_out"]:
+		for warning: Variant in exported.get(field, []):
+			if not warning is String:
+				continue
+			for pick: String in picks:
+				if warning.contains(pick):
+					requested_warnings.append(warning)
+					break
 	metadata = {
+		"requestedWarnings": requested_warnings,
 		"pieces": exported.get("pieces", []).size(),
 		"wheels": exported.get("wheels"),
 		"issues": exported.get("left_out", []).size() + exported.get("not_fitted", []).size() + exported.get("warnings", []).size()
@@ -294,14 +340,35 @@ func _read_pipe(pipe: FileAccess) -> PackedByteArray:
 	return data
 
 
-func _category(info: Variant) -> String:
-	if not info is Dictionary:
-		return "未分类"
-	var value: Variant = info.get("vehicleClass")
-	if value is Dictionary:
-		value = value.get("tag")
-	var index := int(value) if value is float or value is int else -1
-	return CLASS_NAMES[index] if index >= 0 and index < CLASS_NAMES.size() else "未分类"
+func _load_catalog_details(path: String, folder: String, signature: String, records: Array) -> Dictionary:
+	var cache_path := folder.path_join("catalog-details-v1.json")
+	var previous := _read_dictionary(cache_path)
+	if previous.get("stamp") != signature:
+		previous = {"stamp": signature}
+	var ids := VEHICLE_CATALOG.label_ids(records)
+	if not ids.is_empty() and not previous.has("labels"):
+		progress.emit("正在读取游戏简中车型名称", -1.0)
+		var result := await _run(path, folder, ["text", "data", "--plain", "--label", ",".join(ids), "--quiet"])
+		var labels := VEHICLE_CATALOG.simplified_labels(result)
+		if not labels.is_empty():
+			previous.labels = labels
+	if not previous.has("handling"):
+		progress.emit("正在读取本地车辆参数", -1.0)
+		var result := await _run(path, folder, ["handling", "--out", folder, "--quiet"])
+		if result.get("ok", false):
+			var handling := _read_dictionary(folder.path_join("pso/handling.json"))
+			var values := VEHICLE_CATALOG.handling_data(handling.get("records", []))
+			if not values.is_empty():
+				previous.handling = values
+	if not previous.has("cardsV2"):
+		progress.emit("正在读取载具图鉴与性能数据", -1.0)
+		var result := await _run(path, folder, ["rbf", "data", "--out", folder, "--quiet"])
+		if result.get("ok", false):
+			var cards := VEHICLE_PROGRESS.read_directory(folder.path_join("rbf/data"))
+			if not cards.is_empty():
+				previous.cardsV2 = cards
+	_write_dictionary(cache_path, previous)
+	return previous
 
 
 static func matches_pattern(value: Variant, pattern: String) -> bool:
