@@ -12,8 +12,10 @@
     <SelfContained>true</SelfContained>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <ApplicationIcon>Assets\leonida.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.6.5" />
+    <Content Include="Assets\leonida.ico;Assets\leonida-mark.png" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

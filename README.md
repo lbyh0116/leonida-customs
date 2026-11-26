@@ -1,4 +1,4 @@
-# GTA VI 载具预览器
+# Leonida Motorworks · GTA VI 载具预览器
 
 Windows x64 上的离线载具查看器。WinUI 3 提供载具库和设置，同一窗口内的白色摄影棚由 Godot 4 渲染，SixNG 读取 Xbox RPF9 载具资源。应用按 GPL-3.0-only 开源。查看游戏内容时，请在本机提供自己的游戏文件。
 
@@ -18,24 +18,30 @@ Windows x64 上的离线载具查看器。WinUI 3 提供载具库和设置，同
 
 ## 渲染设置与自由视角
 
-白色工位使用顶置长灯条、亮面地板和轮胎接触阴影。Godot 在独立的本地渲染进程生成画面，由 WinUI 在中央视口显示，预览传输上限为 30 帧每秒。GPU 计时包含启用时的地板倒影。
+工位使用顶置长灯条和可调颜色、粗糙度的亮面地板。Godot 在本地生成画面，由 WinUI 在中央视口显示，预览传输上限为 30 帧每秒。
 
-- `Start-Viewer.cmd` 使用 Godot 4.7.2 的稳定版 Forward+。要使用硬件光追，在同一目录运行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -RayTracing`，然后双击 `Start-Viewer-RayTracing.cmd`。光追入口使用 Godot 4.8 Beta 5，两者复用本地载具目录和缓存。
-- 右侧「渲染设置」中可切换画质预设、抗锯齿和 3D 渲染比例。可用模式为 TAA、FXAA、SMAA、MSAA 2×/4×/8×、FSR 2.2 和关闭。降低渲染比例会减少 3D 像素开销，界面按原分辨率显示。顶部 GPU 毫秒用于比较设置的开销。
-- 「反射」同时控制 SSR 和半分辨率的地板平面倒影。还可分别切换环境光遮蔽、间接光照和辉光，并调整顶灯、主光、曝光、地面粗糙度和颜色。
-- 「摄影棚 · 高画质」会在支持的 Vulkan 设备上开启硬件光追。光追通过车辆网格计算地面软阴影，可选每采样点 8/16/32/64 条光线。移动摄像机时复用世界空间阴影，改变车辆或主光方向时重新计算。车体材质和自身阴影使用 Forward+。
+- 右上角「设置」集中管理界面主题、Mica、车灯、地面网格、渲染和灯光。「灯光与地面」的颜色选择器支持十六进制输入。车灯默认打开，外观、车灯、网格和地面颜色保存在项目的 `work/viewer-preferences.json`。
+- 「纯光栅」使用 Forward+，可切换 SSR、平面倒影、SSAO、SSIL 和辉光。抗锯齿支持 TAA、FXAA、SMAA、MSAA、FSR 2.2 和关闭。
+- 安装官方 NVIDIA Godot RTX 运行时后，可在同一窗口切换「全路径追踪」。该模式由引擎渲染多次反弹、反射和阴影，画质可调整每像素样本。首次切换或加载新材质时，视口会提示正在准备着色器。
+- 「NVIDIA DLSS / DLAA」需要另装 Streamline 并由运行时确认硬件支持。渲染比例 100% 使用 DLAA，低于 100% 使用 DLSS 超分。支持光线重建时，全路径追踪搭配 DLSS 自动启用光线重建。
 - 点击预览底部「自由视角」后，鼠标在预览区域内控制朝向，WASD 平移，Q/E 降低或抬高，Shift 加速，滚轮调移动速度，Esc 退出。普通环绕模式仍可用。
 
-光追可用性验证可在已安装 4.8 Beta 5 的 Windows 上运行：
+### 可选 RTX 运行时
+
+默认入口在安装 RTX 运行时后自动使用它，并从纯光栅起步。`Start-Viewer-RayTracing.cmd` 在本机支持时直接进入全路径追踪。
+
+`setup.ps1 -RayTracing` 通过已登录的 GitHub CLI 获取 [NVIDIA 官方 Windows 构建](https://github.com/NVIDIA-RTX/godot/actions/runs/41390391716)。可用 `setup.ps1 -DLSS` 同时安装 [NVIDIA Streamline 2.10.0](https://github.com/NVIDIA-RTX/Streamline/releases/tag/v2.10.0)。构建归档到期后，也可从 [NVIDIA Godot RTX 对应提交](https://github.com/NVIDIA-RTX/godot/tree/49a825dc52c0f1892ff5ce5cdbbe7572c638d41a) 编译 Windows x64 编辑器，将可执行文件放入 `tools/godot-rtx`，命名为 `godot.windows.editor.x86_64.exe`。
+
+可运行不依赖游戏文件的渲染切换检查：
 
 ```powershell
-.\tools\godot-preview\Godot_v4.8-beta5_win64_console.exe --path . --script tests/ray_shadow_smoke.gd
+.\tools\godot-rtx\godot.windows.editor.x86_64.exe --path . --script tests/render_mode_smoke.gd -- --require-rtx --require-dlss
 ```
 
 ## 当前范围
 
 - 实测 Xbox Series 1.0.2.1。此版本的 SixNG 能恢复部分资源名称，缺少原厂配置的车型会尝试加载基础模型。
-- 预览会读取可用的车辆遮蔽贴图，保留格栅的镂空遮罩，并为前进气口内的深色零件和轮腔补充遮蔽。可识别的车灯按熄灯状态显示，并分别处理灯罩和反光面。缺失刹车盘或鼓时使用内侧遮挡。
+- 预览会读取可用的车辆遮蔽贴图，保留格栅的镂空遮罩，并为前进气口内的深色零件和轮腔补充遮蔽。轮毂外圈与辐条使用抛光金属响应，制动件使用独立材质。可识别的车灯使用导出资源的发光贴图，灯罩与反光面分别处理。缺失刹车盘或鼓时使用内侧遮挡。
 - 对带有 SixNG 主漆标记的模型，可在 WinUI「车辆配置」实时切换亮光实色、金属漆、哑光和珠光。可沿用原车颜色或输入 `#RRGGBB`。这些饰面使用预览器的参数，当前改车码仅记录原厂配置和配件。Xbox BCPack 解码、游戏专用着色器、涂装及部分配件数据会影响复现精度。
 - 改装属于本地预览，配件随 SixNG 对该车型的解析能力而定。改车码在同版本资源之间最容易复现。
 
@@ -46,5 +52,5 @@ Windows x64 上的离线载具查看器。WinUI 3 提供载具库和设置，同
 ## 依赖
 
 - [Windows App SDK / WinUI 3](https://learn.microsoft.com/en-us/windows/apps/windows-app-sdk/) · 2.6.5，通过 NuGet 还原。
-- [Godot 4.7.2](https://godotengine.org/download/archive/4.7.2-stable/) · MIT。默认使用 Forward+。硬件光追入口可选 [Godot 4.8 Beta 5](https://godotengine.org/article/dev-snapshot-godot-4-8-beta-5/)。
+- [Godot 4.7.2](https://godotengine.org/download/archive/4.7.2-stable/) · MIT。路径追踪可选 NVIDIA Godot RTX。Streamline 运行时按 NVIDIA 的许可单独获取。
 - [SixNG 0.9.0](https://github.com/holdmysocks/SixNG/releases/tag/v0.9.0) · GPL-3.0。按独立进程调用 `index`、`vehicles` 和 `vehicle`；在项目目录外使用自带的兼容版本可设置 `SIXNG_EXE`。

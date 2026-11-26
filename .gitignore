@@ -3,6 +3,7 @@
 /tools/*
 !/tools/.gdignore
 !/tools/install-sixng.ps1
+!/tools/install-rtx.ps1
 /build/
 *.glb
 *.gltf

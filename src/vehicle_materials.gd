@@ -5,6 +5,7 @@ const BODY_SHADER := preload("res://src/vehicle_body.gdshader")
 const VEHICLE_OCCLUSION_SLOT := "2bb2ede8"
 
 var painted_surfaces: Array[ShaderMaterial] = []
+var vehicle_lamps: Array[BaseMaterial3D] = []
 static var _cutout_shader: Shader
 var _texture_roots: PackedStringArray
 var _textures: Dictionary = {}
@@ -54,11 +55,12 @@ func apply(geometries: Array[Node], state: GLTFState, path: String, bounds: AABB
 			var kind := str(classification.get("stand_in", ""))
 			var family := str(classification.get("family", ""))
 			var material_class := str(classification.get("class", ""))
-			var parked_lamp := material_class == "emissive" and (
+			var vehicle_lamp := material_class == "emissive" and (
 				family.contains("vehicle lamps") or str(extras.get("shader_name", "")).begins_with("standard_vehicle_emissive"))
 			var lamp_lens := material_class == "glass" and family.contains("vehicle lamp")
+			var window_glass := material_class == "window"
 			var occlusion := _vehicle_occlusion(extras)
-			if kind not in ["parts", "rim", "rubber"] and not parked_lamp and not lamp_lens and occlusion == null:
+			if kind not in ["parts", "rim", "rubber"] and not vehicle_lamp and not lamp_lens and not window_glass and occlusion == null:
 				continue
 			var colours: Variant = mesh.surface_get_arrays(surface)[Mesh.ARRAY_COLOR]
 			var has_colours: bool = colours is PackedColorArray and not colours.is_empty()
@@ -67,7 +69,8 @@ func apply(geometries: Array[Node], state: GLTFState, path: String, bounds: AABB
 				var wheel_extent: AABB = wheel_extents[wheel]
 				# A centered wheel can be exposed on both sides, as on motorcycles.
 				if absf(wheel_extent.get_center().x - vehicle_midline) > 0.25 and wheel_extent.size.x > 0.025:
-					node.set_surface_override_material(surface, _rim_material(original, occlusion, wheel_extent, vehicle_midline, has_colours))
+					var polished := str(node.name).to_lower().begins_with("rim_")
+					node.set_surface_override_material(surface, _rim_material(original, occlusion, wheel_extent, vehicle_midline, has_colours, polished))
 					if not wheels_with_brakes.has(wheel) and not backed_wheels.has(wheel):
 						backed_wheels[wheel] = true
 						_add_missing_wheel_backing(node, wheel_extent, vehicle_midline)
@@ -85,17 +88,16 @@ func apply(geometries: Array[Node], state: GLTFState, path: String, bounds: AABB
 				material.ao_texture = occlusion
 				material.ao_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_BLUE
 				material.ao_light_affect = 0.85
-			if parked_lamp:
-				# glTF exports the emission texture but has no lamp power
-				# state. The studio previews the vehicle with the lamps off.
-				material.emission_enabled = false
-			if lamp_lens:
+			if vehicle_lamp and material.emission_texture != null:
+				material.emission_energy_multiplier = 1.4
+				vehicle_lamps.append(material)
+			if lamp_lens or window_glass:
 				var tint := material.albedo_color
-				tint.a *= 0.42
+				tint.a *= 0.42 if lamp_lens else 0.74
 				material.albedo_color = tint
-				material.roughness = 0.075
+				material.roughness = 0.075 if lamp_lens else 0.09
 				material.metallic = 0.0
-				material.metallic_specular = 0.5
+				material.metallic_specular = 0.5 if lamp_lens else 0.38
 			if kind in ["parts", "rim", "rubber"] and has_colours and material.transparency == BaseMaterial3D.TRANSPARENCY_DISABLED:
 				material.vertex_color_use_as_albedo = true
 				material.vertex_color_is_srgb = false
@@ -161,7 +163,7 @@ func _load_texture(relative_path: String) -> Texture2D:
 	return null
 
 
-static func _rim_material(original: BaseMaterial3D, occlusion: Texture2D, extent: AABB, midline: float, has_colours: bool) -> ShaderMaterial:
+static func _rim_material(original: BaseMaterial3D, occlusion: Texture2D, extent: AABB, midline: float, has_colours: bool, polished: bool) -> ShaderMaterial:
 	var material := ShaderMaterial.new()
 	material.shader = RIM_SHADER
 	var right := extent.get_center().x > midline
@@ -169,6 +171,7 @@ static func _rim_material(original: BaseMaterial3D, occlusion: Texture2D, extent
 	material.set_shader_parameter("opening_x", extent.end.x if right else extent.position.x)
 	material.set_shader_parameter("barrel_width", extent.size.x)
 	material.set_shader_parameter("use_vertex_tint", has_colours)
+	material.set_shader_parameter("polished", polished)
 	material.set_shader_parameter("base_tint", original.albedo_color)
 	material.set_shader_parameter("surface_roughness", original.roughness)
 	if occlusion != null:

@@ -23,10 +23,12 @@ internal sealed class RendererClient : IDisposable
     public event Action<JsonElement>? Notification;
     public event Action<string>? Disconnected;
 
-    public async Task<JsonElement> StartAsync(string root, bool rayTracing)
+    public async Task<JsonElement> StartAsync(string root)
     {
-        var engine = rayTracing
-            ? Path.Combine(root, "tools", "godot-preview", "Godot_v4.8-beta5_win64.exe")
+        var rtx = Path.Combine(root, "tools", "godot-rtx", "godot.windows.editor.x86_64.exe");
+        var hasRtx = File.Exists(rtx);
+        var engine = hasRtx
+            ? rtx
             : Path.Combine(root, "tools", "godot", "Godot_v4.7.2-stable_win64.exe");
         if (!File.Exists(engine))
             throw new InvalidOperationException("找不到 Godot。请先运行项目的 setup.ps1。");
@@ -36,14 +38,14 @@ internal sealed class RendererClient : IDisposable
         var secret = Convert.ToHexString(RandomNumberGenerator.GetBytes(24));
         listener.Start(1);
         var port = ((IPEndPoint)listener.LocalEndpoint).Port;
-        var log = Path.Combine(root, "work", rayTracing ? "winui-renderer-rt.log" : "winui-renderer.log");
+        var log = Path.Combine(root, "work", hasRtx ? "winui-renderer-rtx.log" : "winui-renderer.log");
         var options = new ProcessStartInfo(engine)
         {
             WorkingDirectory = root,
             UseShellExecute = false,
             CreateNoWindow = true
         };
-        foreach (var arg in new[] { "--path", root, "--log-file", log, "--single-window", "--audio-driver", "Dummy" })
+        foreach (var arg in new[] { "--path", root, "--log-file", log, "--single-window", "--audio-driver", "Dummy", "--rendering-driver", "vulkan" })
             options.ArgumentList.Add(arg);
         options.ArgumentList.Add("res://preview-worker.tscn");
         options.ArgumentList.Add("--");

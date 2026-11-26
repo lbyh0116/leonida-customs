@@ -1,8 +1,10 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.Storage.Streams;
 using Windows.Foundation;
@@ -36,7 +38,12 @@ public sealed partial class MainWindow : Window
     private bool busy;
     private bool populating;
     private bool partsLoaded;
-    private bool rayAvailable;
+    private bool pathAvailable;
+    private bool dlssAvailable;
+    private bool rayReconstruction;
+    private bool appearanceReady;
+    private string? preferencePath;
+    private Preferences preferences = new();
     private bool paintable;
     private bool closing;
     private Point? pointerPosition;
@@ -45,6 +52,7 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        Shell.ActualThemeChanged += (_, _) => UpdateTitleTheme();
         PaintFinish.SelectionChanged += async (_, _) => await UpdatePaintAsync();
         PaintColor.LostFocus += async (_, _) => await UpdatePaintAsync();
         PaintColor.KeyDown += async (_, args) =>
@@ -75,7 +83,8 @@ public sealed partial class MainWindow : Window
             if (args.WindowActivationState == WindowActivationState.Deactivated && Fly.IsChecked == true)
                 await ExitFlyAsync();
         };
-        Title = "GTA VI 载具预览器 · WinUI";
+        Title = "Leonida Motorworks · 载具预览器";
+        AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "leonida.ico"));
         var workArea = Microsoft.UI.Windowing.DisplayArea.GetFromWindowId(AppWindow.Id,
             Microsoft.UI.Windowing.DisplayAreaFallback.Primary).WorkArea;
         var width = Math.Min(1400, workArea.Width - 24);
@@ -103,6 +112,8 @@ public sealed partial class MainWindow : Window
         try
         {
             var root = LocateProject();
+            preferencePath = Path.Combine(root, "work", "viewer-preferences.json");
+            LoadPreferences();
             viewport = new NativeViewport();
             renderer.Notification += message => DispatcherQueue.TryEnqueue(() => OnRendererEvent(message));
             renderer.Disconnected += message => DispatcherQueue.TryEnqueue(() =>
@@ -111,7 +122,7 @@ public sealed partial class MainWindow : Window
                 SetBusy(false);
                 Report(message, error: true);
             });
-            var hello = await renderer.StartAsync(root, Arguments.Contains("--ray-tracing"));
+            var hello = await renderer.StartAsync(root);
             for (var attempt = 0; attempt < 20 && viewport.RendererWindow == 0; attempt++)
             {
                 if (!viewport.TryAttach(renderer.ProcessId))
@@ -121,11 +132,22 @@ public sealed partial class MainWindow : Window
                 throw new InvalidOperationException("未能把 Godot 视口嵌入 WinUI 窗口。");
 
             connected = true;
-            rayAvailable = hello.GetProperty("ray_available").GetBoolean();
-            RayStatus.Text = rayAvailable ? "Vulkan 光追可用。" : "当前使用稳定版光栅阴影。";
+            var capabilities = hello.GetProperty("capabilities");
+            pathAvailable = capabilities.GetProperty("path_tracing").GetBoolean();
+            dlssAvailable = capabilities.GetProperty("dlss").GetBoolean();
+            rayReconstruction = capabilities.GetProperty("ray_reconstruction").GetBoolean();
+            PathTracingOption.IsEnabled = pathAvailable;
+            DlssSwitch.IsEnabled = dlssAvailable;
+            populating = true;
             BuildLighting(hello.GetProperty("lighting"));
+            RenderMode.SelectedIndex = 0;
+            Samples.SelectedIndex = 0;
+            populating = false;
             Preset.SelectedIndex = 0;
+            if (pathAvailable && Arguments.Contains("--ray-tracing"))
+                RenderMode.SelectedIndex = 1;
             await SendQualityAsync();
+            await ApplyPreviewPreferencesAsync();
             await ResizePreviewAsync();
             await PostAsync("frame_ack", new { });
             SetBusy(false);
@@ -161,9 +183,6 @@ public sealed partial class MainWindow : Window
             case "progress":
                 Report(message.GetProperty("message").GetString() ?? "", message.GetProperty("percent").GetDouble());
                 break;
-            case "ray":
-                RayStatus.Text = message.GetProperty("message").GetString();
-                break;
             case "camera":
                 Fly.IsChecked = message.GetProperty("free").GetBoolean();
                 if (Fly.IsChecked != true)
@@ -171,6 +190,9 @@ public sealed partial class MainWindow : Window
                 CameraHint.Text = Fly.IsChecked == true
                     ? "WASD 移动 · Q/E 升降 · Esc 退出"
                     : "拖动旋转 · 右键平移 · 滚轮缩放";
+                break;
+            case "path_warmup":
+                PreviewProgress.Visibility = message.GetProperty("active").GetBoolean() ? Visibility.Visible : Visibility.Collapsed;
                 break;
             case "frame":
                 _ = PresentFrameAsync(message.GetProperty("jpeg").GetString() ?? "");
@@ -546,9 +568,21 @@ public sealed partial class MainWindow : Window
         Ao.IsChecked = true;
         Ssil.IsChecked = index == 0;
         Bloom.IsChecked = index < 2;
-        Ray.IsChecked = index == 0 && rayAvailable;
-        Samples.SelectedIndex = index == 0 ? 1 : 0;
         populating = false;
+        await SendQualityAsync();
+    }
+
+    private async void RenderModeChanged(object sender, SelectionChangedEventArgs args)
+    {
+        if (!connected || populating)
+            return;
+        if (RenderMode.SelectedIndex == 1)
+        {
+            populating = true;
+            DlssSwitch.IsOn = dlssAvailable;
+            Scale.Value = dlssAvailable ? 67 : 100;
+            populating = false;
+        }
         await SendQualityAsync();
     }
 
@@ -560,16 +594,23 @@ public sealed partial class MainWindow : Window
 
     private Task SendQualityAsync()
     {
-        Ray.IsEnabled = rayAvailable;
-        Samples.IsEnabled = Ray.IsChecked == true && rayAvailable;
-        if (!rayAvailable)
-            RayStatus.Text = "当前使用稳定版光栅阴影。";
+        var path = pathAvailable && RenderMode.SelectedIndex == 1;
+        var dlss = dlssAvailable && DlssSwitch.IsOn;
+        var reconstruct = path && dlss && rayReconstruction;
+        Samples.IsEnabled = path;
+        Antialias.IsEnabled = !path && !dlss;
+        Ssr.IsEnabled = Ao.IsEnabled = Ssil.IsEnabled = !path;
+        GridLines.IsEnabled = !path;
+        RayStatus.Text = path
+            ? (reconstruct ? "全路径追踪 · DLSS 光线重建" : "全路径追踪 · 原始采样")
+            : !pathAvailable ? "纯光栅 · 当前运行时或 GPU 不支持路径追踪"
+            : dlss ? "纯光栅 · DLSS 已启用" : "纯光栅 · DLSS " + (dlssAvailable ? "可用" : "不可用");
         return PostAsync("quality", new
         {
-            aa = Antialias.SelectedIndex, scale = Scale.Value / 100,
+            aa = dlss ? 8 : path ? 0 : Antialias.SelectedIndex, scale = Scale.Value / 100,
             ssr = Ssr.IsChecked == true, ao = Ao.IsChecked == true, ssil = Ssil.IsChecked == true,
-            bloom = Bloom.IsChecked == true, ray = Ray.IsChecked == true && rayAvailable,
-            samples = new[] { 8, 16, 32, 64 }[Math.Max(0, Samples.SelectedIndex)]
+            bloom = Bloom.IsChecked == true, path_tracing = path, ray_reconstruction = reconstruct,
+            samples = new[] { 1, 2, 4, 8 }[Math.Max(0, Samples.SelectedIndex)]
         });
     }
 
@@ -591,6 +632,29 @@ public sealed partial class MainWindow : Window
         AddLightSlider("地面粗糙度", "floor_roughness", .08, .90, .01);
         AddLightColor("主光色", "light_color");
         AddLightColor("背景色", "background_color");
+        var savedColor = preferences.FloorColor;
+        SetFloorPicker(savedColor is not null && ColorPattern.IsMatch(savedColor) ? savedColor : (string)lightDefaults["floor_color"]);
+    }
+
+    private void SetFloorPicker(string hex)
+    {
+        lighting["floor_color"] = hex;
+        FloorColorButton.Content = "地面颜色 · " + hex.ToUpperInvariant();
+        var rgb = Convert.ToUInt32(hex[1..], 16);
+        FloorPicker.Color = Windows.UI.Color.FromArgb(255, (byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb);
+    }
+
+    private async void FloorColorChanged(ColorPicker sender, ColorChangedEventArgs args)
+    {
+        if (!connected || populating || !lighting.ContainsKey("floor_color"))
+            return;
+        var color = args.NewColor;
+        var hex = $"#{color.R:X2}{color.G:X2}{color.B:X2}";
+        lighting["floor_color"] = hex;
+        FloorColorButton.Content = "地面颜色 · " + hex;
+        preferences = preferences with { FloorColor = hex };
+        SavePreferences();
+        await PostAsync("lighting", lighting);
     }
 
     private void AddLightSlider(string title, string key, double min, double max, double step)
@@ -631,11 +695,98 @@ public sealed partial class MainWindow : Window
         {
             if (lightSliders.TryGetValue(key, out var slider))
                 slider.Value = (double)value;
+            else if (key == "floor_color")
+                SetFloorPicker((string)value);
             else
                 lightColors[key].Text = (string)value;
             lighting[key] = value;
         }
         populating = false;
+        preferences = preferences with { FloorColor = "" };
+        SavePreferences();
+        await PostAsync("lighting", lighting);
+    }
+
+    private async void ToggleSettings(object sender, RoutedEventArgs args)
+    {
+        bool open = SettingsPage.Visibility != Visibility.Visible;
+        if (open && Fly.IsChecked == true)
+            await ExitFlyAsync();
+        StudioPage.Visibility = open ? Visibility.Collapsed : Visibility.Visible;
+        SettingsPage.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+        SettingsButton.Content = open ? "返回车库" : "设置";
+    }
+
+    private void LoadPreferences()
+    {
+        if (File.Exists(preferencePath))
+        {
+            try { preferences = JsonSerializer.Deserialize<Preferences>(File.ReadAllText(preferencePath!), JsonOptions) ?? new(); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException) { }
+        }
+        ThemeChoice.SelectedIndex = Math.Clamp(preferences.Theme, 0, 2);
+        MicaSwitch.IsOn = preferences.Mica;
+        LampSwitch.IsOn = preferences.Lamps;
+        GridLines.IsOn = preferences.Grid;
+        appearanceReady = true;
+        ApplyAppearance();
+    }
+
+    private void SavePreferences()
+    {
+        if (preferencePath is null)
+            return;
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(preferencePath)!);
+            var staging = preferencePath + ".tmp";
+            File.WriteAllText(staging, JsonSerializer.Serialize(preferences, JsonOptions));
+            File.Move(staging, preferencePath, overwrite: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+    }
+
+    private void ApplyAppearance()
+    {
+        Shell.RequestedTheme = ThemeChoice.SelectedIndex switch
+        {
+            1 => ElementTheme.Light,
+            2 => ElementTheme.Dark,
+            _ => ElementTheme.Default
+        };
+        SystemBackdrop = MicaSwitch.IsOn ? SystemBackdrop as MicaBackdrop ?? new MicaBackdrop() : null;
+        SolidBackdrop.Visibility = MicaSwitch.IsOn ? Visibility.Collapsed : Visibility.Visible;
+        UpdateTitleTheme();
+    }
+
+    private void UpdateTitleTheme()
+    {
+        if (AppWindowTitleBar.IsCustomizationSupported())
+            AppWindow.TitleBar.PreferredTheme = Shell.ActualTheme == ElementTheme.Dark ? TitleBarTheme.Dark : TitleBarTheme.Light;
+    }
+
+    private void AppearanceChanged(object sender, RoutedEventArgs args)
+    {
+        if (!appearanceReady)
+            return;
+        preferences = preferences with { Theme = ThemeChoice.SelectedIndex, Mica = MicaSwitch.IsOn };
+        ApplyAppearance();
+        SavePreferences();
+    }
+
+    private async void PreviewPreferenceChanged(object sender, RoutedEventArgs args)
+    {
+        if (!appearanceReady)
+            return;
+        preferences = preferences with { Lamps = LampSwitch.IsOn, Grid = GridLines.IsOn };
+        SavePreferences();
+        await ApplyPreviewPreferencesAsync();
+    }
+
+    private async Task ApplyPreviewPreferencesAsync()
+    {
+        await PostAsync("lamps", new { enabled = LampSwitch.IsOn });
+        await PostAsync("camera", new { action = "grid", enabled = GridLines.IsOn });
         await PostAsync("lighting", lighting);
     }
 
@@ -685,8 +836,10 @@ public sealed partial class MainWindow : Window
     private void Report(string text, double progress = -1, bool error = false)
     {
         Status.Text = text;
-        Status.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(error
-            ? Microsoft.UI.Colors.IndianRed : Windows.UI.Color.FromArgb(255, 75, 86, 104));
+        if (error)
+            Status.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.IndianRed);
+        else
+            Status.ClearValue(TextBlock.ForegroundProperty);
         ToolTipService.SetToolTip(Status, text);
         Progress.Visibility = progress >= 0 ? Visibility.Visible : Visibility.Collapsed;
         Progress.Value = Math.Max(0, progress);
@@ -700,4 +853,5 @@ public sealed partial class MainWindow : Window
     public sealed record FactoryOption(string? Color, int Count);
     private sealed record PartOption(string Id, string Slot, [property: System.Text.Json.Serialization.JsonPropertyName("slot_name")] string? SlotName, string Label);
     private sealed record BuildCode(string Model, int Config, string[] Parts);
+    private sealed record Preferences(int Theme = 0, bool Mica = true, bool Lamps = true, bool Grid = false, string FloorColor = "");
 }

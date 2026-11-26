@@ -36,9 +36,9 @@ void fragment() {
 	float metalness = code < 200.0 ? floor(code / 50.0) / 3.0 : base_metallic;
 	float roughness = code < 200.0 ? clamp(mod(code, 50.0) / 49.0, 0.06, 1.0) : base_roughness;
 	float body_metal = 0.43;
-	float body_roughness = 0.34;
+	float body_roughness = 0.30;
 	float coat = 0.57;
-	float coat_roughness = 0.31;
+	float coat_roughness = 0.25;
 	if (finish == 1) {
 		body_metal = 0.08;
 		body_roughness = 0.23;

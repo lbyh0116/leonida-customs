@@ -1,4 +1,4 @@
-param([switch]$RayTracing)
+param([switch]$RayTracing, [switch]$DLSS)
 
 $ErrorActionPreference = 'Stop'
 $Root = $PSScriptRoot
@@ -31,12 +31,12 @@ function Install-Godot([string]$Version, [string]$Folder, [string]$Sha256) {
 }
 
 Install-Godot '4.7.2-stable' 'tools/godot' '731980F9608D61333E5BAF54A2EF17210ACC7A538446C0CB9969F002ACA1E953'
-if ($RayTracing) {
-    Install-Godot '4.8-beta5' 'tools/godot-preview' '253F11023A4FE21F5420E0DF038CE5446B79C501E1168B8178DF3D70A23F5553'
+if ($RayTracing -or $DLSS) {
+    & (Join-Path $Root 'tools/install-rtx.ps1') -DLSS:$DLSS
 }
 & (Join-Path $Root 'tools/install-sixng.ps1')
 & (Join-Path $Root 'Build-WinUI.ps1')
-if ($RayTracing) {
+if ($RayTracing -or $DLSS) {
     Write-Host 'Setup complete. Run Start-Viewer-RayTracing.cmd or Start-Viewer.cmd.'
 } else {
     Write-Host 'Setup complete. Run Start-Viewer.cmd.'

@@ -14,6 +14,9 @@ var _busy := false
 var _elapsed := 0.0
 var _frame_elapsed := 0.0
 var _frame_credit := false
+var _path_active := false
+var _path_warmup_until := 0
+var _path_wait_until := 0
 
 
 func _ready() -> void:
@@ -40,11 +43,8 @@ func _ready() -> void:
 	_stage.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(_stage)
 	_stage.stretch = false
-	_stage.ray_status_changed.connect(func(message: String):
-		_send({"event": "ray", "message": message}))
 	_stage.free_view_changed.connect(func(enabled: bool):
 		_send({"event": "camera", "free": enabled}))
-	_stage.set_ray_shadows(_stage.supports_ray_shadows(), 16)
 	if _transport.connect_to_host("127.0.0.1", port) != OK:
 		get_tree().quit(2)
 
@@ -60,11 +60,12 @@ func _process(delta: float) -> void:
 	if not _connected:
 		_connected = true
 		var lighting: Dictionary = _stage.lighting_defaults()
-		lighting.light_color = "#" + lighting.light_color.to_html(false)
-		lighting.background_color = "#" + lighting.background_color.to_html(false)
+		for key in lighting:
+			if lighting[key] is Color:
+				lighting[key] = "#" + lighting[key].to_html(false)
 		_send({
 			"event": "hello", "token": _token, "saved_game": _source.saved_game(),
-			"ray_available": _stage.supports_ray_shadows(), "lighting": lighting
+			"capabilities": _stage.render_capabilities(), "lighting": lighting
 		})
 	var amount := _transport.get_available_bytes()
 	if amount > 0:
@@ -72,14 +73,34 @@ func _process(delta: float) -> void:
 	_frame_elapsed += delta
 	if _frame_credit and _frame_elapsed >= 1.0 / 30.0 and _stage.viewport.size.x > 8:
 		_frame_elapsed = 0.0
-		var frame: Image = _stage.viewport.get_texture().get_image()
-		if frame != null and not frame.is_empty():
-			_frame_credit = false
-			_send({"event": "frame", "jpeg": Marshalls.raw_to_base64(frame.save_jpg_to_buffer(0.93))})
+		if _frame_ready():
+			var frame: Image = _stage.viewport.get_texture().get_image()
+			if frame != null and not frame.is_empty():
+				_frame_credit = false
+				_send({"event": "frame", "jpeg": Marshalls.raw_to_base64(frame.save_jpg_to_buffer(0.93))})
 	_elapsed += delta
 	if _elapsed >= 0.65:
 		_elapsed = 0.0
 		_send({"event": "timing", "gpu_ms": _stage.gpu_frame_ms(), "fps": Engine.get_frames_per_second()})
+
+
+func _prepare_path_frame() -> void:
+	if _path_active and RenderingServer.has_method("get_rendering_not_ready_reasons"):
+		_path_warmup_until = Time.get_ticks_msec() + 250
+		_path_wait_until = _path_warmup_until + 20000
+		_send({"event": "path_warmup", "active": true})
+
+
+func _frame_ready() -> bool:
+	if _path_wait_until == 0:
+		return true
+	var now := Time.get_ticks_msec()
+	if _path_active and now < _path_wait_until:
+		if now < _path_warmup_until or int(RenderingServer.call("get_rendering_not_ready_reasons")) != 0:
+			return false
+	_path_wait_until = 0
+	_send({"event": "path_warmup", "active": false})
+	return true
 
 
 func _read(amount: int) -> void:
@@ -121,7 +142,10 @@ func _handle(request: Dictionary) -> void:
 		"quality":
 			_stage.set_quality(int(data.aa), float(data.scale))
 			_stage.set_effects(data.ssr, data.ao, data.ssil, data.bloom)
-			_stage.set_ray_shadows(data.ray, int(data.samples))
+			var path_active: bool = _stage.set_render_mode(data.path_tracing, int(data.samples), data.ray_reconstruction)
+			if _path_active != path_active:
+				_path_active = path_active
+				_prepare_path_frame()
 		"lighting":
 			var lighting: Dictionary = _stage.lighting_defaults()
 			for key in lighting:
@@ -131,6 +155,8 @@ func _handle(request: Dictionary) -> void:
 			_stage.set_lighting(lighting)
 		"paint":
 			_stage.set_paint(int(data.get("finish", 0)), str(data.get("color", "")))
+		"lamps":
+			_stage.set_vehicle_lamps(bool(data.get("enabled", true)))
 		"camera":
 			match str(data.action):
 				"reset": _stage.reset_camera()
@@ -170,6 +196,7 @@ func _run_asset_command(command: String, data: Dictionary) -> Dictionary:
 			var asset: Dictionary = _stage.show_model(result.path)
 			if asset.has("error"):
 				return {"ok": false, "error": asset.error}
+			_prepare_path_frame()
 			var size: Vector3 = asset.size
 			return {
 				"ok": true, "meshes": asset.meshes, "size": [size.x, size.y, size.z], "paintable": asset.paintable,

@@ -8,13 +8,13 @@ var _light: Dictionary
 var _sliders: Dictionary = {}
 var _key_color: ColorPickerButton
 var _backdrop: ColorPickerButton
+var _floor_color: ColorPickerButton
 var _ssr: CheckButton
 var _ao: CheckButton
 var _ssil: CheckButton
 var _bloom: CheckButton
 var _ray: CheckButton
 var _samples: OptionButton
-var _ray_status: Label
 
 
 func attach(stage: SubViewportContainer) -> void:
@@ -47,8 +47,10 @@ func attach(stage: SubViewportContainer) -> void:
 	_aa = OptionButton.new()
 	for label in ["关闭", "FXAA", "SMAA", "TAA", "MSAA 2×", "MSAA 4×", "MSAA 8×", "FSR 2.2（时间抗锯齿）"]:
 		_aa.add_item(label)
+	if _stage.render_capabilities().dlss:
+		_aa.add_item("NVIDIA DLSS / DLAA")
 	_stack.add_child(_aa)
-	_aa.item_selected.connect(func(_index: int): _apply_quality())
+	_aa.item_selected.connect(func(_index: int): _update_render_configuration())
 	_scale = _slider("3D 渲染比例", 0.50, 1.0, 0.01, 1.0, true)
 	_scale.value_changed.connect(func(_value: float): _apply_quality())
 	_ssr = _check("反射 · SSR 与地板倒影")
@@ -58,21 +60,19 @@ func attach(stage: SubViewportContainer) -> void:
 	for effect in [_ssr, _ao, _ssil, _bloom]:
 		effect.toggled.connect(func(_on: bool): _apply_effects())
 
-	_heading("硬件光追阴影")
-	_ray = _check("车辆投影到地面")
-	_ray.disabled = not _stage.supports_ray_shadows()
+	_heading("渲染模式")
+	_ray = _check("全路径追踪")
+	_ray.disabled = not _stage.render_capabilities().path_tracing
 	_ray.toggled.connect(func(_on: bool): _apply_ray())
 	_samples = OptionButton.new()
-	for count in [8, 16, 32, 64]:
-		_samples.add_item("%s 条光线 / 采样点" % count, count)
-	_samples.select(1)
+	for count in [1, 2, 4, 8]:
+		_samples.add_item("%s 样本 / 像素" % count, count)
+	_samples.select(0)
 	_samples.item_selected.connect(func(_index: int): _apply_ray())
 	_stack.add_child(_samples)
-	_ray_status = Label.new()
-	_ray_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_ray_status.add_theme_font_size_override("font_size", 12)
-	_stack.add_child(_ray_status)
-	_stage.ray_status_changed.connect(_on_ray_status)
+	var lamps := _check("车灯")
+	lamps.set_pressed_no_signal(true)
+	lamps.toggled.connect(_stage.set_vehicle_lamps)
 
 	_heading("灯光")
 	_light_slider("key", "主光强度", 0.0, 4.0, 0.05)
@@ -86,6 +86,7 @@ func attach(stage: SubViewportContainer) -> void:
 	_light_slider("floor_roughness", "地面粗糙度", 0.08, 0.90, 0.01)
 	_key_color = _color_row("主光色", "light_color")
 	_backdrop = _color_row("背景色", "background_color")
+	_floor_color = _color_row("地面色", "floor_color")
 	var reset := Button.new()
 	reset.text = "重置灯光"
 	reset.pressed.connect(_reset_lighting)
@@ -101,10 +102,13 @@ func _preset(index: int) -> void:
 	_ao.set_pressed_no_signal(true)
 	_ssil.set_pressed_no_signal(index == 0)
 	_bloom.set_pressed_no_signal(index < 2)
-	_ray.set_pressed_no_signal(index == 0 and not _ray.disabled)
-	_samples.select(1 if index == 0 else 0)
 	_apply_quality()
 	_apply_effects()
+	_apply_ray()
+
+
+func _update_render_configuration() -> void:
+	_apply_quality()
 	_apply_ray()
 
 
@@ -119,11 +123,7 @@ func _apply_effects() -> void:
 func _apply_ray() -> void:
 	var active := _ray.button_pressed and not _ray.disabled
 	_samples.disabled = not active
-	_stage.set_ray_shadows(active, _samples.get_selected_id())
-
-
-func _on_ray_status(message: String) -> void:
-	_ray_status.text = message
+	_stage.set_render_mode(active, _samples.get_selected_id(), _aa.selected == 8 and _stage.render_capabilities().ray_reconstruction)
 
 
 func _heading(title: String) -> void:
@@ -196,4 +196,5 @@ func _reset_lighting() -> void:
 	_light = initial
 	_key_color.color = initial.light_color
 	_backdrop.color = initial.background_color
+	_floor_color.color = initial.floor_color
 	_stage.set_lighting(_light)
