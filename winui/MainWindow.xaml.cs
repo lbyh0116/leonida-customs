@@ -73,7 +73,7 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         fpsTimer.Tick += (_, _) => UpdateFps();
         Shell.ActualThemeChanged += (_, _) => UpdateTitleTheme();
-        foreach (var button in new[] { OpenFolder, SettingsButton, ReadParts, CopyCode, ImportCode })
+        foreach (var button in new[] { OpenFolder, SettingsButton, SettingsBackButton, ReadParts, CopyCode, ImportCode })
             button.Click += (_, _) => StudioMotion.Pressed(button);
         PaintFinish.SelectionChanged += async (_, _) => await UpdatePaintAsync();
         PaintColor.LostFocus += async (_, _) => await UpdatePaintAsync();
@@ -1040,15 +1040,24 @@ public sealed partial class MainWindow : Window
         await PostAsync("lighting", lighting);
     }
 
-    private async void ToggleSettings(object sender, RoutedEventArgs args)
+    private async void OpenSettingsClicked(object sender, RoutedEventArgs args)
     {
-        bool open = SettingsPage.Visibility != Visibility.Visible;
+        ShowSettings(open: true);
+        if (Fly.IsChecked == true)
+            await ExitFlyAsync();
+    }
+
+    private void SettingsBackClicked(object sender, RoutedEventArgs args) => ShowSettings(open: false);
+
+    private void ShowSettings(bool open)
+    {
         StudioPage.Visibility = open ? Visibility.Collapsed : Visibility.Visible;
         SettingsPage.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
-        SettingsButton.Content = open ? "返回车库" : "设置";
+        WorkshopMark.Visibility = open ? Visibility.Collapsed : Visibility.Visible;
+        SettingsButton.Visibility = open ? Visibility.Collapsed : Visibility.Visible;
+        SettingsBackButton.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
         StudioMotion.Enter(open ? SettingsPage : StudioPage, new Vector3(open ? 16 : -16, 0, 0));
-        if (open && Fly.IsChecked == true)
-            await ExitFlyAsync();
+        (open ? SettingsBackButton : SettingsButton).Focus(FocusState.Programmatic);
     }
 
     private void LoadPreferences()
