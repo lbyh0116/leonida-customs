@@ -76,6 +76,8 @@ public sealed partial class MainWindow : Window
         foreach (var button in new[] { OpenFolder, SettingsButton, SettingsBackButton, ReadParts, CopyCode, ImportCode })
             button.Click += (_, _) => StudioMotion.Pressed(button);
         PaintFinish.SelectionChanged += async (_, _) => await UpdatePaintAsync();
+        PaintColor.TextChanged += (_, _) => UpdateColorSwatch(PaintColorSwatch, PaintColor.Text);
+        FloorHexInput.TextChanged += (_, _) => UpdateColorSwatch(FloorHexSwatch, FloorHexInput.Text);
         PaintColor.LostFocus += async (_, _) => await UpdatePaintAsync();
         PaintColor.KeyDown += async (_, args) =>
         {
@@ -378,11 +380,12 @@ public sealed partial class MainWindow : Window
         Factory.Items.Clear();
         for (var i = 0; i < vehicle.Configurations.Count; i++)
         {
-            var color = vehicle.Configurations[i].Color;
-            Factory.Items.Add($"配置 {i + 1:00}" + (string.IsNullOrEmpty(color) ? "" : $" · {color}"));
+            var hex = vehicle.Configurations[i].Color;
+            var label = $"配置 {i + 1:00}" + (string.IsNullOrEmpty(hex) ? "" : $" · {hex}");
+            Factory.Items.Add(new FactoryEntry(label, ColorSwatchBrush(hex)));
         }
         if (Factory.Items.Count == 0)
-            Factory.Items.Add("基础模型");
+            Factory.Items.Add(new FactoryEntry("基础模型", null));
         Factory.SelectedIndex = 0;
         populating = false;
         RefreshVehicles();
@@ -969,12 +972,58 @@ public sealed partial class MainWindow : Window
         SetFloorPicker(savedColor is not null && ColorPattern.IsMatch(savedColor) ? savedColor : (string)lightDefaults["floor_color"]);
     }
 
+    private static Windows.UI.Color? ParseHexColor(string? text)
+    {
+        var hex = text?.Trim();
+        if (hex is null || !ColorPattern.IsMatch(hex))
+            return null;
+        var rgb = Convert.ToUInt32(hex[1..], 16);
+        return Windows.UI.Color.FromArgb(255, (byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb);
+    }
+
+    private static SolidColorBrush? ColorSwatchBrush(string? text) =>
+        ParseHexColor(text) is { } color ? new SolidColorBrush(color) : null;
+
+    private static void UpdateColorSwatch(Border swatch, string? text)
+    {
+        swatch.Background = ColorSwatchBrush(text);
+        swatch.Visibility = swatch.Background is null ? Visibility.Collapsed : Visibility.Visible;
+    }
+
     private void SetFloorPicker(string hex)
     {
+        if (ParseHexColor(hex) is not { } color)
+            return;
         lighting["floor_color"] = hex;
-        FloorColorButton.Content = "地面颜色 · " + hex.ToUpperInvariant();
-        var rgb = Convert.ToUInt32(hex[1..], 16);
-        FloorPicker.Color = Windows.UI.Color.FromArgb(255, (byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb);
+        ShowFloorColor(color);
+        FloorPicker.Color = color;
+    }
+
+    private void ShowFloorColor(Windows.UI.Color color)
+    {
+        var hex = $"#{color.R:X2}{color.G:X2}{color.B:X2}";
+        FloorColorLabel.Text = "地面颜色 · " + hex;
+        FloorHexInput.Text = hex;
+        UpdateColorSwatch(FloorColorSwatch, hex);
+        UpdateColorSwatch(FloorHexSwatch, hex);
+    }
+
+    private void FloorHexLostFocus(object sender, RoutedEventArgs args) => ApplyFloorHex();
+
+    private void FloorHexKeyDown(object sender, KeyRoutedEventArgs args)
+    {
+        if (args.Key == VirtualKey.Enter)
+        {
+            args.Handled = true;
+            ApplyFloorHex();
+        }
+    }
+
+    private void ApplyFloorHex()
+    {
+        if (ParseHexColor(FloorHexInput.Text) is { } color)
+            FloorPicker.Color = color;
+        ShowFloorColor(FloorPicker.Color);
     }
 
     private async void FloorColorChanged(ColorPicker sender, ColorChangedEventArgs args)
@@ -984,7 +1033,7 @@ public sealed partial class MainWindow : Window
         var color = args.NewColor;
         var hex = $"#{color.R:X2}{color.G:X2}{color.B:X2}";
         lighting["floor_color"] = hex;
-        FloorColorButton.Content = "地面颜色 · " + hex;
+        ShowFloorColor(color);
         preferences = preferences with { FloorColor = hex };
         SavePreferences();
         await PostAsync("lighting", lighting);
@@ -1006,19 +1055,27 @@ public sealed partial class MainWindow : Window
 
     private void AddLightColor(string title, string key)
     {
-        var color = new TextBox { Header = $"{title} · #RRGGBB", Text = (string)lightDefaults[key], MaxLength = 7 };
+        var color = new TextBox { Text = (string)lightDefaults[key], MaxLength = 7, Width = 115, PlaceholderText = "#RRGGBB" };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(color, title);
+        var swatch = new Border { Style = (Style)Shell.Resources["ColorSwatchStyle"] };
+        UpdateColorSwatch(swatch, color.Text);
+        color.TextChanged += (_, _) => UpdateColorSwatch(swatch, color.Text);
         color.LostFocus += async (_, _) =>
         {
-            if (!Regex.IsMatch(color.Text, "^#[0-9a-fA-F]{6}$", RegexOptions.CultureInvariant))
+            if (ParseHexColor(color.Text) is null)
             {
                 color.Text = (string)lighting[key];
                 return;
             }
-            lighting[key] = color.Text;
+            lighting[key] = color.Text.Trim();
             await PostAsync("lighting", lighting);
         };
         lightColors[key] = color;
-        LightingPanel.Children.Add(color);
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 7 };
+        row.Children.Add(color);
+        row.Children.Add(swatch);
+        LightingPanel.Children.Add(new TextBlock { Text = title });
+        LightingPanel.Children.Add(row);
     }
 
     private async void ResetLighting(object sender, RoutedEventArgs args)
@@ -1213,6 +1270,11 @@ public sealed partial class MainWindow : Window
     }
 
     public sealed record FactoryOption(string? Color, int Count);
+    public sealed record FactoryEntry(string Label, SolidColorBrush? Swatch)
+    {
+        public Visibility SwatchVisibility => Swatch is null ? Visibility.Collapsed : Visibility.Visible;
+        public override string ToString() => Label;
+    }
     private sealed record PartOption(string Id, string Slot, [property: System.Text.Json.Serialization.JsonPropertyName("slot_name")] string? SlotName, string Label, int[]? StockConfigs);
     private sealed record BuildCode(string Model, int Config, string[] Parts);
     private enum AaMethod { None = 0, Fxaa = 1, Smaa = 2, Taa = 3, Msaa = 4, Fsr2 = 7, Dlss = 8 }

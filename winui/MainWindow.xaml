@@ -3,6 +3,16 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <Grid x:Name="Shell" UseLayoutRounding="True"
           Loaded="ShellLoaded" Padding="15" RowSpacing="12">
+        <Grid.Resources>
+            <Style x:Key="ColorSwatchStyle" TargetType="Border">
+                <Setter Property="Width" Value="14" />
+                <Setter Property="Height" Value="14" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="BorderBrush" Value="{ThemeResource ControlStrongStrokeColorDefaultBrush}" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="IsHitTestVisible" Value="False" />
+            </Style>
+        </Grid.Resources>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -137,7 +147,17 @@
                         <StackPanel Spacing="9" Padding="4,0,5,0">
                             <TextBlock Text="原厂配置" FontWeight="SemiBold" />
                             <ComboBox x:Name="Factory" HorizontalAlignment="Stretch"
-                                      AutomationProperties.Name="原厂配置" SelectionChanged="FactoryChanged" />
+                                      AutomationProperties.Name="原厂配置" SelectionChanged="FactoryChanged">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" Spacing="7">
+                                            <TextBlock Text="{Binding Label}" />
+                                            <Border Style="{StaticResource ColorSwatchStyle}" Background="{Binding Swatch}"
+                                                    Visibility="{Binding SwatchVisibility}" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
                             <TextBlock Text="车辆数据" FontWeight="SemiBold" Margin="0,7,0,0" />
                             <TextBlock x:Name="VehicleInfo" FontSize="12" TextWrapping="Wrap"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
@@ -158,8 +178,14 @@
                                         <x:String>哑光</x:String>
                                         <x:String>珠光</x:String>
                                     </ComboBox>
-                                    <TextBox x:Name="PaintColor" Header="自定义漆色" PlaceholderText="原车颜色或 #RRGGBB"
-                                             MaxLength="7" IsEnabled="False" />
+                                    <StackPanel Spacing="6">
+                                        <TextBlock Text="自定义漆色" />
+                                        <StackPanel Orientation="Horizontal" Spacing="7">
+                                            <TextBox x:Name="PaintColor" Width="158" PlaceholderText="原车颜色或 #RRGGBB"
+                                                     AutomationProperties.Name="自定义漆色" MaxLength="7" IsEnabled="False" />
+                                            <Border x:Name="PaintColorSwatch" Style="{StaticResource ColorSwatchStyle}" Visibility="Collapsed" />
+                                        </StackPanel>
+                                    </StackPanel>
                                 </StackPanel>
                             </Expander>
                             <StackPanel x:Name="PartsPanel" Spacing="9" />
@@ -237,11 +263,23 @@
                         Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
                     <StackPanel Spacing="9">
                         <TextBlock Text="灯光与地面" FontSize="17" FontWeight="SemiBold" />
-                        <Button x:Name="FloorColorButton" Content="地面颜色" HorizontalAlignment="Stretch">
+                        <Button x:Name="FloorColorButton" HorizontalAlignment="Stretch">
+                            <StackPanel Orientation="Horizontal" Spacing="7">
+                                <TextBlock x:Name="FloorColorLabel" Text="地面颜色" />
+                                <Border x:Name="FloorColorSwatch" Style="{StaticResource ColorSwatchStyle}" Visibility="Collapsed" />
+                            </StackPanel>
                             <Button.Flyout>
                                 <Flyout Placement="Left">
-                                    <ColorPicker x:Name="FloorPicker" IsAlphaEnabled="False"
-                                                 IsColorPreviewVisible="True" ColorChanged="FloorColorChanged" />
+                                    <StackPanel Spacing="8">
+                                        <ColorPicker x:Name="FloorPicker" IsAlphaEnabled="False" IsHexInputVisible="False"
+                                                     IsColorPreviewVisible="True" ColorChanged="FloorColorChanged" />
+                                        <StackPanel Orientation="Horizontal" Spacing="7">
+                                            <TextBox x:Name="FloorHexInput" Width="115" MaxLength="7" PlaceholderText="#RRGGBB"
+                                                     AutomationProperties.Name="地面颜色编码" LostFocus="FloorHexLostFocus"
+                                                     KeyDown="FloorHexKeyDown" />
+                                            <Border x:Name="FloorHexSwatch" Style="{StaticResource ColorSwatchStyle}" Visibility="Collapsed" />
+                                        </StackPanel>
+                                    </StackPanel>
                                 </Flyout>
                             </Button.Flyout>
                         </Button>
