@@ -58,9 +58,10 @@ void fragment() {
 		body_roughness = 0.25;
 		coat = 0.97;
 		coat_roughness = 0.075;
-		float flakes = flake_variation(world_point, length(VERTEX)) * paint;
+		float flakes = flake_variation(world_point, length(VERTEX));
 		body_metal += 0.18 * flakes;
-		tint += (vec3(0.15) + 0.35 * body_color) * flakes;
+		vec3 flake_color = clamp(body_color + (vec3(0.15) + 0.35 * body_color) * flakes, vec3(0.0), vec3(1.0));
+		tint += (flake_color - body_color) * paint;
 	} else if (finish == 3) {
 		body_metal = 0.06;
 		body_roughness = 0.72;
