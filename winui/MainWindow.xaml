@@ -158,8 +158,6 @@
                         </StackPanel>
                     </ScrollViewer>
                     <StackPanel Grid.Row="1" Spacing="6" Padding="3,0">
-                        <Button x:Name="Apply" Content="更新预览" Click="ApplyClicked"
-                                HorizontalAlignment="Stretch" Style="{StaticResource AccentButtonStyle}" />
                         <Grid ColumnSpacing="6">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
@@ -203,10 +201,7 @@
                         Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
                     <StackPanel x:Name="RenderPanel" Spacing="9">
                         <TextBlock Text="渲染" FontSize="17" FontWeight="SemiBold" />
-                        <ComboBox x:Name="RenderMode" Header="渲染模式" HorizontalAlignment="Stretch" SelectionChanged="RenderModeChanged">
-                            <ComboBoxItem Content="纯光栅 · Forward+" />
-                            <ComboBoxItem x:Name="PathTracingOption" Content="全路径追踪 · RTX" />
-                        </ComboBox>
+                        <ToggleSwitch x:Name="PathTracingSwitch" Header="路径追踪" Toggled="QualityChanged" />
                         <ComboBox x:Name="PathQuality" Header="路径追踪画质" HorizontalAlignment="Stretch" SelectionChanged="QualityChanged">
                             <x:String>性能 · 1 样本/像素</x:String>
                             <x:String>平衡 · 2 样本/像素</x:String>

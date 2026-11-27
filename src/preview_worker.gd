@@ -76,7 +76,7 @@ func _process(delta: float) -> void:
 		_read(amount)
 	_settle_path_frame()
 	_frame_elapsed += delta
-	if _frame_credit and (_fps_limit == 0 or _frame_elapsed >= 1.0 / DEFAULT_PREVIEW_FPS) and _stage.viewport.size.x > 8:
+	if not _busy and _frame_credit and (_fps_limit == 0 or _frame_elapsed >= 1.0 / DEFAULT_PREVIEW_FPS) and _stage.viewport.size.x > 8:
 		_frame_elapsed = 0.0
 		if _frame_ready():
 			var frame: Image = _stage.viewport.get_texture().get_image()
@@ -156,7 +156,11 @@ func _handle(request: Dictionary) -> void:
 				_busy = false
 		"quality":
 			_fps_limit = 0 if data.get("uncapped", false) else DEFAULT_PREVIEW_FPS
-			_stage.set_quality(int(data.aa), float(data.scale))
+			var aa := int(data.aa)
+			var path_tracing: bool = data.path_tracing and _stage.render_capabilities().path_tracing
+			# MSAA resolves rasterized geometry, not the ray-traced image.
+			var effective_aa := 0 if path_tracing and aa in [4, 5, 6] else aa
+			_stage.set_quality(effective_aa, float(data.scale))
 			_stage.set_effects(data.ssr, data.ao, data.ssil, data.bloom)
 			_path_active = _stage.set_render_mode(data.path_tracing, int(data.samples), data.ray_reconstruction)
 			var configuration := [data.path_tracing, data.samples, data.aa, data.scale, data.ray_reconstruction]
@@ -164,6 +168,7 @@ func _handle(request: Dictionary) -> void:
 				_prepare_path_frame()
 				_path_configuration = configuration
 			result["path_tracing"] = _path_active
+			result["aa"] = effective_aa
 			result["scale"] = _stage.viewport.scaling_3d_scale
 			result["fps_limit"] = _fps_limit
 		"lighting":

@@ -6,6 +6,7 @@ const FLOOR_SHADER := preload("res://src/render_studio_floor.gdshader")
 const VehicleMaterials := preload("res://src/vehicle_materials.gd")
 const PANEL_SIZE := Vector2(5.5, 7.2)
 const PANEL_HEIGHT := 3.35
+const CAMERA_MIN_HEIGHT := 0.10
 
 var stage: Node3D
 var viewport: SubViewport
@@ -272,13 +273,15 @@ func _make_cyclorama() -> ArrayMesh:
 
 func set_quality(aa: int, scale: float) -> void:
 	viewport.msaa_3d = Viewport.MSAA_DISABLED
-	viewport.use_taa = aa == 3
+	if aa != 3:
+		viewport.use_taa = false
 	viewport.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED
 	if aa == 8 and render_capabilities().dlss:
 		viewport.scaling_3d_mode = ClassDB.class_get_integer_constant("Viewport", "SCALING_3D_MODE_DLSS")
 	else:
 		viewport.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR2 if aa == 7 else Viewport.SCALING_3D_MODE_BILINEAR
 	viewport.scaling_3d_scale = clampf(scale, 0.50, 1.0)
+	viewport.use_taa = aa == 3
 	viewport.fsr_sharpness = 0.33
 	match aa:
 		1: viewport.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA
@@ -493,9 +496,14 @@ func _gui_input(event: InputEvent) -> void:
 func _move_camera() -> void:
 	if not is_instance_valid(camera) or _free_view:
 		return
-	var direction := Vector3(sin(_yaw) * cos(_pitch), sin(_pitch), cos(_yaw) * cos(_pitch))
-	var framing := _aspect_framing()
-	camera.position = _target + direction * _distance * framing
+	_target.y = maxf(_target.y, CAMERA_MIN_HEIGHT)
+	var distance := _distance * _aspect_framing()
+	var floor_pitch := asin(clampf((CAMERA_MIN_HEIGHT - _target.y) / distance, -1.0, 1.0))
+	var pitch := maxf(_pitch, floor_pitch)
+	var direction := Vector3(sin(_yaw) * cos(pitch), sin(pitch), cos(_yaw) * cos(pitch))
+	var position := _target + direction * distance
+	position.y = maxf(position.y, CAMERA_MIN_HEIGHT)
+	camera.position = position
 	camera.look_at(_target, Vector3.UP)
 
 
@@ -533,7 +541,9 @@ func _move_free_camera(delta: float) -> void:
 	if _key_held(KEY_Q): move += Vector3.DOWN
 	if move.length_squared() > 0.0:
 		var boost := 3.0 if _key_held(KEY_SHIFT) else 1.0
-		camera.position += move.normalized() * _fly_speed * boost * delta
+		var position := camera.position + move.normalized() * _fly_speed * boost * delta
+		position.y = maxf(position.y, CAMERA_MIN_HEIGHT)
+		camera.position = position
 
 
 func _input(event: InputEvent) -> void:

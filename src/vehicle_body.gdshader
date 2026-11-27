@@ -54,14 +54,19 @@ void fragment() {
 		coat = 1.0;
 		coat_roughness = 0.055;
 	} else if (finish == 2) {
-		body_metal = 0.38;
-		body_roughness = 0.25;
-		coat = 0.97;
-		coat_roughness = 0.075;
-		float flakes = flake_variation(world_point, length(VERTEX));
-		body_metal += 0.18 * flakes;
-		vec3 flake_color = clamp(body_color + (vec3(0.15) + 0.35 * body_color) * flakes, vec3(0.0), vec3(1.0));
-		tint += (flake_color - body_color) * paint;
+		if (path_tracing) {
+			body_metal = 0.64;
+			body_roughness = 0.28;
+		} else {
+			body_metal = 0.38;
+			body_roughness = 0.25;
+			coat = 0.97;
+			coat_roughness = 0.075;
+			float flakes = flake_variation(world_point, length(VERTEX));
+			body_metal += 0.18 * flakes;
+			vec3 flake_color = clamp(body_color + (vec3(0.15) + 0.35 * body_color) * flakes, vec3(0.0), vec3(1.0));
+			tint += (flake_color - body_color) * paint;
+		}
 	} else if (finish == 3) {
 		body_metal = 0.06;
 		body_roughness = 0.72;
@@ -79,7 +84,7 @@ void fragment() {
 	// RTX evaluates one reflection lobe for a custom spatial material. Use
 	// the coat's roughness in that lobe while keeping a broader base in raster.
 	float body_specular = 0.5;
-	if (path_tracing) {
+	if (path_tracing && finish != 2) {
 		body_roughness = sqrt(mix(body_roughness * body_roughness, coat_roughness * coat_roughness, coat));
 		body_specular = mix(0.5, 0.68, coat);
 	}

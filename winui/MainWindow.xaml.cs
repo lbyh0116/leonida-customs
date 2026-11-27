@@ -49,6 +49,9 @@ public sealed partial class MainWindow : Window
     private bool paintable;
     private bool closing;
     private bool assemblingVehicle;
+    private bool applyingParts;
+    private readonly SemaphoreSlim assetGate = new(1);
+    private BuildCode? pendingParts;
     private bool preparingPathFrame;
     private WriteableBitmap? previewBitmap;
     private (int Width, int Height) previewSize;
@@ -61,9 +64,7 @@ public sealed partial class MainWindow : Window
     private int graphicsRevision;
     private IReadOnlyList<AaChoice> aaMethods = [];
     private IReadOnlyList<AaTier> aaTiers = [];
-    private AaMethod rasterAa = AaMethod.Taa;
-    private AaMethod pathAa = AaMethod.Dlss;
-    private readonly Dictionary<(bool Path, AaMethod Method), int> selectedTiers = new();
+    private readonly Dictionary<AaMethod, int> selectedTiers = new();
     private Point? pointerPosition;
     private readonly HashSet<VirtualKey> heldKeys = new();
 
@@ -72,7 +73,7 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         fpsTimer.Tick += (_, _) => UpdateFps();
         Shell.ActualThemeChanged += (_, _) => UpdateTitleTheme();
-        foreach (var button in new[] { OpenFolder, SettingsButton, ReadParts, Apply, CopyCode, ImportCode })
+        foreach (var button in new[] { OpenFolder, SettingsButton, ReadParts, CopyCode, ImportCode })
             button.Click += (_, _) => StudioMotion.Pressed(button);
         PaintFinish.SelectionChanged += async (_, _) => await UpdatePaintAsync();
         PaintColor.LostFocus += async (_, _) => await UpdatePaintAsync();
@@ -169,7 +170,7 @@ public sealed partial class MainWindow : Window
             pathAvailable = capabilities.GetProperty("path_tracing").GetBoolean();
             dlssAvailable = capabilities.GetProperty("dlss").GetBoolean();
             rayReconstruction = capabilities.GetProperty("ray_reconstruction").GetBoolean();
-            PathTracingOption.IsEnabled = pathAvailable;
+            PathTracingSwitch.IsEnabled = pathAvailable;
             populating = true;
             BuildLighting(hello.GetProperty("lighting"));
             ApplyGraphicsPreferences(Arguments.Contains("--ray-tracing"));
@@ -253,7 +254,7 @@ public sealed partial class MainWindow : Window
     {
         try
         {
-            if (!closing)
+            if (!closing && !assemblingVehicle && !applyingParts)
             {
                 if (previewBitmap is null || previewBitmap.PixelWidth != frame.Width || previewBitmap.PixelHeight != frame.Height)
                 {
@@ -316,8 +317,8 @@ public sealed partial class MainWindow : Window
             ViewSubtitle.Text = "选择载具即可预览";
             MeshDetails.Text = "";
             Factory.Items.Clear();
-            PartsPanel.Children.Clear();
             partChoices.Clear();
+            PartsPanel.Children.Clear();
             partsLoaded = false;
             SourceSummary.Text = "Xbox RPF9 · 本地只读";
             ToolTipService.SetToolTip(SourceSummary, response.GetProperty("game").GetString());
@@ -387,8 +388,8 @@ public sealed partial class MainWindow : Window
         RefreshVehicles();
         VehicleList.ScrollIntoView(vehicle);
         ShowVehicleData(vehicle);
-        PartsPanel.Children.Clear();
         partChoices.Clear();
+        PartsPanel.Children.Clear();
         partsLoaded = false;
         ReadParts.Visibility = Visibility.Collapsed;
         PartsNote.Text = vehicle.Configurations.Count == 0
@@ -450,8 +451,8 @@ public sealed partial class MainWindow : Window
     private async Task LoadPartsForConfigAsync(Vehicle vehicle, int config)
     {
         PartsNote.Text = "正在读取可用配件…";
-        PartsPanel.Children.Clear();
         partChoices.Clear();
+        PartsPanel.Children.Clear();
         partsLoaded = false;
         ReadParts.Visibility = Visibility.Collapsed;
         try
@@ -481,10 +482,10 @@ public sealed partial class MainWindow : Window
 
     private void ShowParts(List<PartOption> parts, string[] picks, int config)
     {
-        PartsPanel.Children.Clear();
         partChoices.Clear();
+        PartsPanel.Children.Clear();
         partsLoaded = true;
-        PartsNote.Text = parts.Count > 0 ? "选好配件后点击「更新预览」。" : "未找到有可解析模型的配件。";
+        PartsNote.Text = parts.Count > 0 ? "选中配件后自动应用到预览。" : "未找到有可解析模型的配件。";
         foreach (var group in parts.GroupBy(part => part.Slot))
         {
             var slot = PartLabels.Slot(group.First().SlotName, group.Key);
@@ -505,6 +506,7 @@ public sealed partial class MainWindow : Window
                 if (picks.Contains(part.Id))
                     combo.SelectedItem = item;
             }
+            combo.SelectionChanged += PartChanged;
             partChoices.Add(combo);
             PartsPanel.Children.Add(combo);
         }
@@ -512,11 +514,56 @@ public sealed partial class MainWindow : Window
             StudioMotion.Enter(PartsPanel, new Vector3(0, 8, 0), 175);
     }
 
-    private async void ApplyClicked(object sender, RoutedEventArgs args)
+    private async void PartChanged(object sender, SelectionChangedEventArgs args)
     {
-        var picks = partChoices.Select(combo => (combo.SelectedItem as ComboBoxItem)?.Tag as string)
+        if (populating || busy || !connected || sender is not ComboBox combo || !partChoices.Contains(combo)
+            || selected is not { } vehicle || Factory.SelectedIndex < 0)
+            return;
+        var picks = partChoices.Select(choice => (choice.SelectedItem as ComboBoxItem)?.Tag as string)
             .OfType<string>().Where(id => id.Length > 0).ToArray();
-        await RunAssetActionAsync("正在重新组装整车…", () => RenderAsync(Factory.SelectedIndex, picks));
+        pendingParts = new BuildCode(vehicle.Id, Factory.SelectedIndex, picks);
+        if (applyingParts)
+            return;
+
+        applyingParts = true;
+        UpdatePreviewLoading();
+        UpdateAssetControls();
+
+        await assetGate.WaitAsync();
+        try
+        {
+            while (pendingParts is { } next && connected && !busy && !closing)
+            {
+                pendingParts = null;
+                try { await RenderAsync(next.Config, next.Parts); }
+                catch (Exception ex) when (ex is not OutOfMemoryException)
+                {
+                    if (!busy && !closing && pendingParts is null)
+                    {
+                        RestoreDisplayedParts(next);
+                        Report(ex.Message, error: true);
+                    }
+                }
+            }
+        }
+        finally
+        {
+            assetGate.Release();
+            applyingParts = false;
+            UpdatePreviewLoading();
+            UpdateAssetControls();
+        }
+    }
+
+    private void RestoreDisplayedParts(BuildCode request)
+    {
+        string[] parts = displayed is { } current && current.Model == request.Model && current.Config == request.Config
+            ? current.Parts : [];
+        populating = true;
+        foreach (var combo in partChoices)
+            combo.SelectedItem = combo.Items.OfType<ComboBoxItem>()
+                .FirstOrDefault(item => item.Tag is string id && parts.Contains(id)) ?? combo.Items[0];
+        populating = false;
     }
 
     private async Task RenderAsync(int config, string[] parts)
@@ -535,6 +582,8 @@ public sealed partial class MainWindow : Window
             assemblingVehicle = false;
             UpdatePreviewLoading();
         }
+        if (closing || selected != vehicle || Factory.SelectedIndex != config)
+            return;
         var size = reply.GetProperty("size").EnumerateArray().Select(d => d.GetDouble()).ToArray();
         var issues = reply.GetProperty("issues").GetInt32();
         var baseModel = reply.GetProperty("base").GetBoolean();
@@ -542,7 +591,8 @@ public sealed partial class MainWindow : Window
         displayed = baseModel ? null : new BuildCode(vehicle.Id, config, parts.Order(StringComparer.Ordinal).ToArray());
         ViewTitle.Text = vehicle.Name;
         ViewSubtitle.Text = $"{vehicle.Category}  ·  {vehicle.Subtitle}";
-        StudioMotion.Enter(VehicleHeading, new Vector3(0, 7, 0), 175);
+        if (!applyingParts)
+            StudioMotion.Enter(VehicleHeading, new Vector3(0, 7, 0), 175);
         MeshDetails.Text = $"{reply.GetProperty("meshes").GetInt32()} 组网格 · {size[0]:F2} × {size[1]:F2} × {size[2]:F2} m";
         var requestedWarnings = reply.GetProperty("requestedWarnings").EnumerateArray()
             .Select(warning => warning.GetString()).OfType<string>().ToArray();
@@ -554,13 +604,13 @@ public sealed partial class MainWindow : Window
 
     private void UpdatePreviewLoading()
     {
-        bool loading = assemblingVehicle || preparingPathFrame;
+        bool loading = assemblingVehicle || applyingParts || preparingPathFrame;
         bool wasVisible = PreviewLoading.Visibility == Visibility.Visible;
         PreviewLoading.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
         PreviewSpinner.IsActive = loading && StudioMotion.Enabled;
         if (loading)
         {
-            PreviewLoadingText.Text = assemblingVehicle ? "正在组装载具预览…" : "正在准备路径追踪画面…";
+            PreviewLoadingText.Text = applyingParts ? "正在应用配件…" : assemblingVehicle ? "正在组装载具预览…" : "正在准备路径追踪画面…";
             if (!wasVisible)
                 StudioMotion.Enter(PreviewLoading, new Vector3(0, -6, 0), 160);
         }
@@ -705,27 +755,24 @@ public sealed partial class MainWindow : Window
         await PostAsync("camera", new { action = toggle.Tag, enabled = toggle.IsChecked == true });
     }
 
-    private bool PathSelected => pathAvailable && RenderMode.SelectedIndex == 1;
+    private bool PathSelected => pathAvailable && PathTracingSwitch.IsOn;
 
-    private void PopulateAaMethods()
+    private void PopulateAaMethods(AaMethod wanted)
     {
-        var methods = new List<AaChoice> { new(AaMethod.None, "关闭") };
-        if (!PathSelected)
+        var methods = new List<AaChoice>
         {
-            methods.AddRange([
-                new(AaMethod.Fxaa, "FXAA"),
-                new(AaMethod.Smaa, "SMAA"),
-                new(AaMethod.Taa, "TAA"),
-                new(AaMethod.Msaa, "MSAA"),
-                new(AaMethod.Fsr2, "AMD FSR 2.2")
-            ]);
-        }
+            new(AaMethod.None, "关闭"),
+            new(AaMethod.Fxaa, "FXAA"),
+            new(AaMethod.Smaa, "SMAA"),
+            new(AaMethod.Taa, "TAA"),
+            new(AaMethod.Msaa, "MSAA"),
+            new(AaMethod.Fsr2, "AMD FSR 2.2")
+        };
         if (dlssAvailable)
             methods.Add(new(AaMethod.Dlss, "NVIDIA DLSS 4.5"));
 
         aaMethods = methods;
         Antialias.ItemsSource = methods.Select(choice => choice.Label).ToArray();
-        var wanted = PathSelected ? pathAa : rasterAa;
         Antialias.SelectedIndex = Math.Max(0, methods.FindIndex(choice => choice.Method == wanted));
         PopulateAaTiers();
     }
@@ -758,28 +805,13 @@ public sealed partial class MainWindow : Window
         AaQuality.ItemsSource = aaTiers.Select(tier => tier.Label).ToArray();
         AaQuality.IsEnabled = aaTiers.Count > 1;
         var defaultTier = method == AaMethod.Msaa ? 1 : 0;
-        AaQuality.SelectedIndex = Math.Clamp(selectedTiers.GetValueOrDefault((PathSelected, method), defaultTier), 0, aaTiers.Count - 1);
-    }
-
-    private void RenderModeChanged(object sender, SelectionChangedEventArgs args)
-    {
-        if (!connected || populating)
-            return;
-        populating = true;
-        PopulateAaMethods();
-        populating = false;
-        MarkGraphicsPending();
+        AaQuality.SelectedIndex = Math.Clamp(selectedTiers.GetValueOrDefault(method, defaultTier), 0, aaTiers.Count - 1);
     }
 
     private void AaMethodChanged(object sender, SelectionChangedEventArgs args)
     {
         if (!connected || populating || Antialias.SelectedIndex < 0)
             return;
-        var method = aaMethods[Antialias.SelectedIndex].Method;
-        if (PathSelected)
-            pathAa = method;
-        else
-            rasterAa = method;
         populating = true;
         PopulateAaTiers();
         populating = false;
@@ -790,7 +822,7 @@ public sealed partial class MainWindow : Window
     {
         if (!connected || populating || AaQuality.SelectedIndex < 0 || Antialias.SelectedIndex < 0)
             return;
-        selectedTiers[(PathSelected, aaMethods[Antialias.SelectedIndex].Method)] = AaQuality.SelectedIndex;
+        selectedTiers[aaMethods[Antialias.SelectedIndex].Method] = AaQuality.SelectedIndex;
         MarkGraphicsPending();
     }
 
@@ -803,19 +835,19 @@ public sealed partial class MainWindow : Window
     private void ApplyGraphicsPreferences(bool requestPath = false, bool reset = false)
     {
         var options = safeMode || reset ? new() : preferences.Graphics ?? new();
-        RenderMode.SelectedIndex = pathAvailable && (requestPath || options.Path) ? 1 : 0;
+        PathTracingSwitch.IsOn = pathAvailable && (requestPath || options.Path);
         PathQuality.SelectedIndex = Math.Clamp(options.PathQuality, 0, 3);
-        rasterAa = Enum.IsDefined(options.RasterAa) ? options.RasterAa : AaMethod.Taa;
-        pathAa = Enum.IsDefined(options.PathAa) ? options.PathAa : AaMethod.Dlss;
+        AaMethod legacy = options.Path || (requestPath && preferences.Graphics is null) ? options.PathAa : options.RasterAa;
+        var method = options.AntialiasMethod ?? legacy;
         selectedTiers.Clear();
-        foreach (var tier in options.Tiers ?? [])
-            selectedTiers[(tier.Path, tier.Method)] = tier.Index;
+        foreach (var tier in (options.Tiers ?? []).OrderBy(tier => tier.Path == options.Path))
+            selectedTiers[tier.Method] = tier.Index;
         Ssr.IsChecked = options.Reflections;
         Ao.IsChecked = options.Occlusion;
         Ssil.IsChecked = options.IndirectLight;
         Bloom.IsChecked = options.Bloom;
         UncapPreview.IsChecked = options.UncapPreview;
-        PopulateAaMethods();
+        PopulateAaMethods(Enum.IsDefined(method) ? method : AaMethod.Taa);
     }
 
     private void MarkGraphicsPending()
@@ -867,7 +899,9 @@ public sealed partial class MainWindow : Window
         bool path = PathSelected;
         PathQuality.IsEnabled = path;
         Ssr.IsEnabled = Ao.IsEnabled = Ssil.IsEnabled = !path;
-        RayStatus.Text = !path && !pathAvailable ? "当前运行时或 GPU 不支持路径追踪。" : "";
+        RayStatus.Text = !pathAvailable ? "当前运行时或 GPU 不支持路径追踪。" :
+            path && aaMethods.ElementAtOrDefault(Antialias.SelectedIndex)?.Method == AaMethod.Msaa
+                ? "MSAA 只处理光栅几何，当前路径追踪画面不会使用它。" : "";
     }
 
     private async Task ApplyGraphicsAsync(bool save)
@@ -878,10 +912,11 @@ public sealed partial class MainWindow : Window
         var method = aaMethods[Antialias.SelectedIndex];
         var tier = aaTiers[AaQuality.SelectedIndex];
         bool reconstruct = path && tier.EngineMode == 8 && rayReconstruction;
-        var settings = new GraphicsPreferences(path, PathQuality.SelectedIndex, rasterAa, pathAa,
-            Ssr.IsChecked == true, Ao.IsChecked == true, Ssil.IsChecked == true, Bloom.IsChecked == true,
-            selectedTiers.Select(tier => new SavedTier(tier.Key.Path, tier.Key.Method, tier.Value)).ToArray(),
-            UncapPreview.IsChecked == true);
+        var settings = new GraphicsPreferences(Path: path, PathQuality: PathQuality.SelectedIndex,
+            Reflections: Ssr.IsChecked == true, Occlusion: Ao.IsChecked == true,
+            IndirectLight: Ssil.IsChecked == true, Bloom: Bloom.IsChecked == true,
+            Tiers: selectedTiers.Select(tier => new SavedTier(path, tier.Key, tier.Value)).ToArray(),
+            UncapPreview: UncapPreview.IsChecked == true, AntialiasMethod: method.Method);
         var reply = await renderer.RequestAsync("quality", new
         {
             aa = tier.EngineMode, scale = tier.Scale,
@@ -902,9 +937,11 @@ public sealed partial class MainWindow : Window
         {
             double scale = reply.GetProperty("scale").GetDouble();
             bool capped = reply.GetProperty("fps_limit").GetInt32() != 0;
-            string mode = actualPath ? "全路径追踪" : "纯光栅";
+            string mode = actualPath ? (reconstruct ? "全路径追踪 · 光线重建" : "全路径追踪") : "纯光栅";
             string methodLabel = method.Method is AaMethod.Dlss or AaMethod.Fsr2 or AaMethod.Msaa
                 ? $"{method.Label} · {tier.Label.Split('(', 2)[0].TrimEnd()}" : method.Label;
+            if (reply.GetProperty("aa").GetInt32() != tier.EngineMode)
+                methodLabel += "（当前不生效）";
             GraphicsStatus.Text = $"已应用 {mode} · {methodLabel} · 3D 比例设定 {scale:P0} · "
                 + (capped ? "预览上限 30 FPS" : "预览限帧已关闭");
         }
@@ -1106,27 +1143,41 @@ public sealed partial class MainWindow : Window
         if (!connected || busy)
             return;
         SetBusy(true);
+        pendingParts = null;
         Report(message);
-        try { await action(); }
+        await assetGate.WaitAsync();
+        try
+        {
+            if (connected && !closing)
+                await action();
+        }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             if (!closing)
                 Report(ex.Message, error: true);
         }
-        finally { SetBusy(false); }
+        finally
+        {
+            assetGate.Release();
+            SetBusy(false);
+        }
     }
 
     private void SetBusy(bool value)
     {
         busy = value;
+        UpdateAssetControls();
+    }
+
+    private void UpdateAssetControls()
+    {
         OpenFolder.IsEnabled = connected && !busy;
         VehicleList.IsEnabled = connected && !busy;
         Factory.IsEnabled = !busy && selected?.Configurations.Count > 0;
         PaintFinish.IsEnabled = connected && !busy && paintable;
         PaintColor.IsEnabled = PaintFinish.IsEnabled && PaintFinish.SelectedIndex > 0;
-        Apply.IsEnabled = !busy && selected is not null;
         ReadParts.IsEnabled = !busy && !partsLoaded && selected?.Configurations.Count > 0;
-        CopyCode.IsEnabled = !busy && displayed is not null;
+        CopyCode.IsEnabled = connected && !busy && !applyingParts && displayed is not null;
         ImportCode.IsEnabled = !busy && vehicles.Count > 0;
         foreach (var control in partChoices)
             control.IsEnabled = !busy;
@@ -1163,6 +1214,6 @@ public sealed partial class MainWindow : Window
     private sealed record GraphicsPreferences(bool Path = false, int PathQuality = 2,
         AaMethod RasterAa = AaMethod.Taa, AaMethod PathAa = AaMethod.Dlss, bool Reflections = true,
         bool Occlusion = true, bool IndirectLight = true, bool Bloom = true, SavedTier[]? Tiers = null,
-        bool UncapPreview = false);
+        bool UncapPreview = false, AaMethod? AntialiasMethod = null);
     private sealed record SavedTier(bool Path, AaMethod Method, int Index);
 }
