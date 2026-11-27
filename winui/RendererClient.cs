@@ -48,9 +48,11 @@ internal sealed class RendererClient : IDisposable
         {
             WorkingDirectory = root,
             UseShellExecute = false,
-            CreateNoWindow = true
+            CreateNoWindow = true,
+            WindowStyle = ProcessWindowStyle.Hidden
         };
-        foreach (var arg in new[] { "--path", root, "--log-file", log, "--single-window", "--audio-driver", "Dummy", "--rendering-driver", "vulkan" })
+        foreach (var arg in new[] { "--path", root, "--log-file", log, "--single-window", "--audio-driver", "Dummy", "--rendering-driver", "vulkan",
+            "--position", "-20000,-20000", "--resolution", "64x64" })
             options.ArgumentList.Add(arg);
         options.ArgumentList.Add("res://preview-worker.tscn");
         options.ArgumentList.Add("--");

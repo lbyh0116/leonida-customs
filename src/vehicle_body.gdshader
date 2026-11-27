@@ -12,6 +12,7 @@ uniform vec4 base_tint : source_color = vec4(1.0);
 uniform vec4 paint_color : source_color = vec4(1.0);
 uniform bool recolor = false;
 uniform int finish = 0;
+uniform bool path_tracing = false;
 uniform vec3 front_bounds;
 #ifdef VEHICLE_CUTOUT
 uniform float alpha_cutoff = 0.5;
@@ -20,6 +21,14 @@ varying vec3 world_point;
 
 void vertex() {
 	world_point = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+}
+
+float flake_variation(vec3 position, float distance_to_camera) {
+	// Car-scale flakes fade out as they become smaller than a pixel.
+	vec3 cell = fract(floor(position * 280.0) * 0.1031);
+	cell += dot(cell, cell.yzx + 33.33);
+	float grain = fract((cell.x + cell.y) * cell.z);
+	return (smoothstep(0.82, 1.0, grain) - 0.09) * (1.0 - smoothstep(0.7, 2.6, distance_to_camera));
 }
 
 void fragment() {
@@ -37,18 +46,21 @@ void fragment() {
 	float roughness = code < 200.0 ? clamp(mod(code, 50.0) / 49.0, 0.06, 1.0) : base_roughness;
 	float body_metal = 0.43;
 	float body_roughness = 0.30;
-	float coat = 0.57;
-	float coat_roughness = 0.25;
+	float coat = 0.73;
+	float coat_roughness = 0.13;
 	if (finish == 1) {
 		body_metal = 0.08;
-		body_roughness = 0.23;
-		coat = 0.85;
-		coat_roughness = 0.14;
+		body_roughness = 0.20;
+		coat = 1.0;
+		coat_roughness = 0.055;
 	} else if (finish == 2) {
-		body_metal = 0.64;
-		body_roughness = 0.28;
-		coat = 0.91;
-		coat_roughness = 0.19;
+		body_metal = 0.38;
+		body_roughness = 0.25;
+		coat = 0.97;
+		coat_roughness = 0.075;
+		float flakes = flake_variation(world_point, length(VERTEX)) * paint;
+		body_metal += 0.18 * flakes;
+		tint += (vec3(0.15) + 0.35 * body_color) * flakes;
 	} else if (finish == 3) {
 		body_metal = 0.06;
 		body_roughness = 0.72;
@@ -60,7 +72,15 @@ void fragment() {
 		body_metal = 0.36;
 		body_roughness = 0.24;
 		coat = 0.97;
-		coat_roughness = 0.16;
+		coat_roughness = 0.085;
+	}
+
+	// RTX evaluates one reflection lobe for a custom spatial material. Use
+	// the coat's roughness in that lobe while keeping a broader base in raster.
+	float body_specular = 0.5;
+	if (path_tracing) {
+		body_roughness = sqrt(mix(body_roughness * body_roughness, coat_roughness * coat_roughness, coat));
+		body_specular = mix(0.5, 0.68, coat);
 	}
 
 	// SixNG merges grilles, ducting and painted panels into shared surfaces.
@@ -73,8 +93,8 @@ void fragment() {
 	ALBEDO = tint * mix(1.0, 0.35, recess);
 	METALLIC = mix(metalness, body_metal, paint);
 	ROUGHNESS = mix(mix(roughness, body_roughness, paint), 0.78, recess);
-	SPECULAR = mix(0.5, 0.12, recess);
-	CLEARCOAT = paint * coat;
+	SPECULAR = mix(mix(0.5, body_specular, paint), 0.12, recess);
+	CLEARCOAT = path_tracing ? 0.0 : paint * coat;
 	CLEARCOAT_ROUGHNESS = coat_roughness;
 	AO = texture(occlusion_map, UV).b * aperture;
 	AO_LIGHT_AFFECT = 0.85;

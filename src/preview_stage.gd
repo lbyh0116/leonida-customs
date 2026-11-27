@@ -121,7 +121,8 @@ func _add_environment() -> void:
 				var edge := PANEL_SIZE * 0.5
 				var width := 1.0 - smoothstep(edge.x - 0.13, edge.x, ceiling.x)
 				var length := 1.0 - smoothstep(edge.y - 0.15, edge.y, ceiling.y)
-				colour += Color(2.05, 2.15, 2.3) * width * length
+				var bright_edge := smoothstep(edge.x - 0.80, edge.x - 0.16, ceiling.x)
+				colour += Color(2.15, 2.25, 2.4) * width * length * lerpf(1.0, 1.65, bright_edge)
 			# The long white walls give curved panels and polished metal a
 			# continuous highlight, with no fill light aimed into the cavities.
 			if absf(horizontal.x) > 0.15:
@@ -217,7 +218,12 @@ func render_capabilities() -> Dictionary:
 
 
 func set_render_mode(enabled: bool, samples: int, denoise: bool) -> bool:
-	_path_tracing = enabled and render_capabilities().path_tracing
+	var path_tracing: bool = enabled and render_capabilities().path_tracing
+	if path_tracing != _path_tracing:
+		_path_tracing = path_tracing
+		_mirror_dirty = true
+		for material in _painted_surfaces:
+			material.set_shader_parameter("path_tracing", _path_tracing)
 	if environment.has_method("set_pathtracing_enabled"):
 		environment.call("set_pathtracing_enabled", _path_tracing)
 		environment.call("set_pathtracing_samples_per_pixel", clampi(samples, 1, 16))
@@ -405,6 +411,7 @@ func set_paint(finish: int, color: String) -> void:
 	_paint_color = color
 	var custom_color := color.length() == 7 and color.begins_with("#") and Color.html_is_valid(color)
 	for surface in _painted_surfaces:
+		surface.set_shader_parameter("path_tracing", _path_tracing)
 		surface.set_shader_parameter("finish", _paint_finish)
 		surface.set_shader_parameter("recolor", _paint_finish != 0 and custom_color)
 		if custom_color:

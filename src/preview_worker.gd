@@ -44,6 +44,7 @@ func _ready() -> void:
 	_stage.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(_stage)
 	_stage.stretch = false
+	_stage.viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	_stage.free_view_changed.connect(func(enabled: bool):
 		_send({"event": "camera", "free": enabled}))
 	if _transport.connect_to_host("127.0.0.1", port) != OK:

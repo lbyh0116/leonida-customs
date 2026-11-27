@@ -33,7 +33,6 @@ public sealed partial class MainWindow : Window
     private readonly Dictionary<string, object> lighting = new();
     private Dictionary<string, object> lightDefaults = new();
     private IReadOnlyList<Vehicle> vehicles = [];
-    private NativeViewport? viewport;
     private Vehicle? selected;
     private BuildCode? displayed;
     private bool started;
@@ -113,7 +112,6 @@ public sealed partial class MainWindow : Window
             closing = true;
             fpsTimer.Stop();
             await renderer.CloseAsync();
-            viewport?.Dispose();
             Close();
         };
     }
@@ -137,7 +135,6 @@ public sealed partial class MainWindow : Window
             var root = projectFolder = LocateProject();
             preferencePath = Path.Combine(root, "work", "viewer-preferences.json");
             LoadPreferences();
-            viewport = new NativeViewport();
             renderer.Notification += message => DispatcherQueue.TryEnqueue(() => OnRendererEvent(message));
             renderer.FrameReceived += frame =>
             {
@@ -155,13 +152,14 @@ public sealed partial class MainWindow : Window
                 Report(message, error: true);
             });
             var hello = await renderer.StartAsync(root, safeMode);
-            for (var attempt = 0; attempt < 20 && viewport.RendererWindow == 0; attempt++)
+            var hidden = RendererWindow.TryHide(renderer.ProcessId);
+            for (var attempt = 0; !hidden && attempt < 20; attempt++)
             {
-                if (!viewport.TryAttach(renderer.ProcessId))
-                    await Task.Delay(50);
+                await Task.Delay(50);
+                hidden = RendererWindow.TryHide(renderer.ProcessId);
             }
-            if (viewport.RendererWindow == 0)
-                throw new InvalidOperationException("未能把 Godot 视口嵌入 WinUI 窗口。");
+            if (!hidden)
+                throw new InvalidOperationException("未能隐藏渲染辅助窗口。");
 
             connected = true;
             var capabilities = hello.GetProperty("capabilities");
@@ -193,7 +191,6 @@ public sealed partial class MainWindow : Window
             if (closing)
                 return;
             SetBusy(false);
-            viewport?.Dispose();
             renderer.Dispose();
             RenderPanel.Visibility = Visibility.Collapsed;
             Report(ex is OperationCanceledException ? "预览进程启动超时。可使用安全模式或从「帮助」打开日志。" : ex.Message, error: true);
