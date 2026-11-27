@@ -222,6 +222,11 @@
                         <CheckBox x:Name="Ao" Content="环境光遮蔽 SSAO" Click="QualityChanged" />
                         <CheckBox x:Name="Ssil" Content="间接光照 SSIL" Click="QualityChanged" />
                         <CheckBox x:Name="Bloom" Content="高光辉光" Click="QualityChanged" />
+                        <CheckBox x:Name="UncapPreview" Content="关闭预览限帧（性能测试）" Click="QualityChanged" />
+                        <TextBlock x:Name="GraphicsStatus" TextWrapping="Wrap" FontSize="12"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" AutomationProperties.LiveSetting="Polite" />
+                        <Button x:Name="ApplyGraphicsButton" Content="应用画质" Click="ApplyGraphicsClicked" IsEnabled="False"
+                                HorizontalAlignment="Stretch" Style="{StaticResource AccentButtonStyle}" />
                         <Button x:Name="ResetGraphicsButton" Content="重置图形设置" Click="ResetGraphics" HorizontalAlignment="Stretch" />
                     </StackPanel>
                 </Border>

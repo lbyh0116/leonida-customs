@@ -4,6 +4,7 @@ const SixNG := preload("res://src/sixng.gd")
 const PreviewStage := preload("res://src/preview_stage.gd")
 const MAX_MESSAGE := 1 << 20
 const MAX_FRAME_PIXELS := 7680 * 4320
+const DEFAULT_PREVIEW_FPS := 30
 
 var _transport := StreamPeerTCP.new()
 var _incoming := PackedByteArray()
@@ -13,6 +14,7 @@ var _token := ""
 var _connected := false
 var _busy := false
 var _frame_elapsed := 0.0
+var _fps_limit := DEFAULT_PREVIEW_FPS
 var _frame_credit := false
 var _path_active := false
 var _path_settle_frames := 0
@@ -74,7 +76,7 @@ func _process(delta: float) -> void:
 		_read(amount)
 	_settle_path_frame()
 	_frame_elapsed += delta
-	if _frame_credit and _frame_elapsed >= 1.0 / 30.0 and _stage.viewport.size.x > 8:
+	if _frame_credit and (_fps_limit == 0 or _frame_elapsed >= 1.0 / DEFAULT_PREVIEW_FPS) and _stage.viewport.size.x > 8:
 		_frame_elapsed = 0.0
 		if _frame_ready():
 			var frame: Image = _stage.viewport.get_texture().get_image()
@@ -153,6 +155,7 @@ func _handle(request: Dictionary) -> void:
 				result = await _run_asset_command(command, data)
 				_busy = false
 		"quality":
+			_fps_limit = 0 if data.get("uncapped", false) else DEFAULT_PREVIEW_FPS
 			_stage.set_quality(int(data.aa), float(data.scale))
 			_stage.set_effects(data.ssr, data.ao, data.ssil, data.bloom)
 			_path_active = _stage.set_render_mode(data.path_tracing, int(data.samples), data.ray_reconstruction)
@@ -160,6 +163,9 @@ func _handle(request: Dictionary) -> void:
 			if configuration != _path_configuration:
 				_prepare_path_frame()
 				_path_configuration = configuration
+			result["path_tracing"] = _path_active
+			result["scale"] = _stage.viewport.scaling_3d_scale
+			result["fps_limit"] = _fps_limit
 		"lighting":
 			var lighting: Dictionary = _stage.lighting_defaults()
 			for key in lighting:

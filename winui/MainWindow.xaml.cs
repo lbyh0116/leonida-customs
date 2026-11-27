@@ -57,6 +57,8 @@ public sealed partial class MainWindow : Window
     private int framesPresented;
     private string? projectFolder;
     private bool savingScreenshot;
+    private bool applyingGraphics;
+    private int graphicsRevision;
     private IReadOnlyList<AaChoice> aaMethods = [];
     private IReadOnlyList<AaTier> aaTiers = [];
     private AaMethod rasterAa = AaMethod.Taa;
@@ -146,6 +148,7 @@ public sealed partial class MainWindow : Window
                 connected = false;
                 fpsTimer.Stop();
                 FpsLabel.Text = "";
+                ApplyGraphicsButton.IsEnabled = false;
                 preparingPathFrame = false;
                 UpdatePreviewLoading();
                 SetBusy(false);
@@ -171,7 +174,7 @@ public sealed partial class MainWindow : Window
             BuildLighting(hello.GetProperty("lighting"));
             ApplyGraphicsPreferences(Arguments.Contains("--ray-tracing"));
             populating = false;
-            await SendQualityAsync();
+            await ApplyGraphicsAsync(save: false);
             await ApplyPreviewPreferencesAsync();
             await ResizePreviewAsync();
             fpsClock.Restart();
@@ -484,19 +487,19 @@ public sealed partial class MainWindow : Window
         PartsNote.Text = parts.Count > 0 ? "选好配件后点击「更新预览」。" : "未找到有可解析模型的配件。";
         foreach (var group in parts.GroupBy(part => part.Slot))
         {
-            var slot = group.First().SlotName?.Replace('_', ' ') ?? $"安装槽 {group.Key}";
+            var slot = PartLabels.Slot(group.First().SlotName, group.Key);
             PartsPanel.Children.Add(new TextBlock { Text = slot, FontSize = 12 });
             var combo = new ComboBox { HorizontalAlignment = HorizontalAlignment.Stretch };
-            var stockPart = group.FirstOrDefault(part => part.StockConfigs?.Contains(config) == true);
-            var stockLabel = stockPart?.Label;
-            if (stockLabel is { Length: > 24 })
-                stockLabel = stockLabel[..24] + "…";
-            combo.Items.Add(new ComboBoxItem { Content = stockLabel is null ? "沿用原厂配置" : $"原厂 · {stockLabel}", Tag = "" });
+            var options = group.Select((part, index) => (Part: part, Title: PartLabels.Option(slot, part.Label, index + 1))).ToArray();
+            var stock = options.FirstOrDefault(option => option.Part.StockConfigs?.Contains(config) == true);
+            var stockItem = new ComboBoxItem { Content = stock.Part is null ? "沿用原厂配置" : $"原厂 · {stock.Title}", Tag = "" };
+            if (stock.Part is not null)
+                ToolTipService.SetToolTip(stockItem, $"{stock.Part.Label} · {stock.Part.Id}");
+            combo.Items.Add(stockItem);
             combo.SelectedIndex = 0;
-            foreach (var part in group)
+            foreach (var (part, title) in options)
             {
-                var label = part.Label.Length > 28 ? part.Label[..25] + "…" : part.Label;
-                var item = new ComboBoxItem { Content = label, Tag = part.Id };
+                var item = new ComboBoxItem { Content = title, Tag = part.Id };
                 ToolTipService.SetToolTip(item, $"{part.Label} · {part.Id}");
                 combo.Items.Add(item);
                 if (picks.Contains(part.Id))
@@ -758,17 +761,17 @@ public sealed partial class MainWindow : Window
         AaQuality.SelectedIndex = Math.Clamp(selectedTiers.GetValueOrDefault((PathSelected, method), defaultTier), 0, aaTiers.Count - 1);
     }
 
-    private async void RenderModeChanged(object sender, SelectionChangedEventArgs args)
+    private void RenderModeChanged(object sender, SelectionChangedEventArgs args)
     {
         if (!connected || populating)
             return;
         populating = true;
         PopulateAaMethods();
         populating = false;
-        await SaveGraphicsAsync();
+        MarkGraphicsPending();
     }
 
-    private async void AaMethodChanged(object sender, SelectionChangedEventArgs args)
+    private void AaMethodChanged(object sender, SelectionChangedEventArgs args)
     {
         if (!connected || populating || Antialias.SelectedIndex < 0)
             return;
@@ -780,26 +783,26 @@ public sealed partial class MainWindow : Window
         populating = true;
         PopulateAaTiers();
         populating = false;
-        await SaveGraphicsAsync();
+        MarkGraphicsPending();
     }
 
-    private async void AaQualityChanged(object sender, SelectionChangedEventArgs args)
+    private void AaQualityChanged(object sender, SelectionChangedEventArgs args)
     {
         if (!connected || populating || AaQuality.SelectedIndex < 0 || Antialias.SelectedIndex < 0)
             return;
         selectedTiers[(PathSelected, aaMethods[Antialias.SelectedIndex].Method)] = AaQuality.SelectedIndex;
-        await SaveGraphicsAsync();
+        MarkGraphicsPending();
     }
 
-    private async void QualityChanged(object sender, RoutedEventArgs args)
+    private void QualityChanged(object sender, RoutedEventArgs args)
     {
         if (connected && !populating)
-            await SaveGraphicsAsync();
+            MarkGraphicsPending();
     }
 
-    private void ApplyGraphicsPreferences(bool requestPath = false)
+    private void ApplyGraphicsPreferences(bool requestPath = false, bool reset = false)
     {
-        var options = safeMode ? new() : preferences.Graphics ?? new();
+        var options = safeMode || reset ? new() : preferences.Graphics ?? new();
         RenderMode.SelectedIndex = pathAvailable && (requestPath || options.Path) ? 1 : 0;
         PathQuality.SelectedIndex = Math.Clamp(options.PathQuality, 0, 3);
         rasterAa = Enum.IsDefined(options.RasterAa) ? options.RasterAa : AaMethod.Taa;
@@ -811,53 +814,100 @@ public sealed partial class MainWindow : Window
         Ao.IsChecked = options.Occlusion;
         Ssil.IsChecked = options.IndirectLight;
         Bloom.IsChecked = options.Bloom;
+        UncapPreview.IsChecked = options.UncapPreview;
         PopulateAaMethods();
     }
 
-    private Task SaveGraphicsAsync()
+    private void MarkGraphicsPending()
     {
-        if (safeMode)
-            return SendQualityAsync();
-        preferences = preferences with
-        {
-            Graphics = new GraphicsPreferences(PathSelected, PathQuality.SelectedIndex, rasterAa, pathAa,
-                Ssr.IsChecked == true, Ao.IsChecked == true, Ssil.IsChecked == true, Bloom.IsChecked == true,
-                selectedTiers.Select(tier => new SavedTier(tier.Key.Path, tier.Key.Method, tier.Value)).ToArray())
-        };
-        SavePreferences();
-        return SendQualityAsync();
+        graphicsRevision++;
+        UpdateGraphicsControls();
+        ApplyGraphicsButton.IsEnabled = !applyingGraphics;
+        GraphicsStatus.Text = "有未应用的画质设置。";
     }
 
-    private async void ResetGraphics(object sender, RoutedEventArgs args)
+    private void ResetGraphics(object sender, RoutedEventArgs args)
     {
         if (!connected)
             return;
-        preferences = preferences with { Graphics = null };
         populating = true;
-        ApplyGraphicsPreferences();
+        ApplyGraphicsPreferences(reset: true);
         populating = false;
-        SavePreferences();
-        await SendQualityAsync();
+        MarkGraphicsPending();
     }
 
-    private Task SendQualityAsync()
+    private async void ApplyGraphicsClicked(object sender, RoutedEventArgs args)
     {
-        var path = PathSelected;
-        var tier = aaTiers[AaQuality.SelectedIndex];
-        var reconstruct = path && tier.EngineMode == 8 && rayReconstruction;
+        if (!connected || applyingGraphics)
+            return;
+        applyingGraphics = true;
+        ApplyGraphicsButton.IsEnabled = false;
+        GraphicsStatus.Text = "正在应用画质…";
+        try
+        {
+            await ApplyGraphicsAsync(save: !safeMode);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or OperationCanceledException)
+        {
+            if (!closing)
+            {
+                GraphicsStatus.Text = "画质未确认应用。";
+                ApplyGraphicsButton.IsEnabled = connected;
+                Report(ex.Message, error: true);
+            }
+        }
+        finally
+        {
+            applyingGraphics = false;
+        }
+    }
+
+    private void UpdateGraphicsControls()
+    {
+        bool path = PathSelected;
         PathQuality.IsEnabled = path;
         Ssr.IsEnabled = Ao.IsEnabled = Ssil.IsEnabled = !path;
-        GridLines.IsEnabled = !path;
-        RayStatus.Text = path
-            ? (reconstruct ? "全路径追踪 · DLSS 光线重建" : "全路径追踪 · 原始采样")
-            : !pathAvailable ? "纯光栅 · 当前运行时或 GPU 不支持路径追踪" : "纯光栅 · Forward+";
-        return PostAsync("quality", new
+        RayStatus.Text = !path && !pathAvailable ? "当前运行时或 GPU 不支持路径追踪。" : "";
+    }
+
+    private async Task ApplyGraphicsAsync(bool save)
+    {
+        UpdateGraphicsControls();
+        int revision = graphicsRevision;
+        bool path = PathSelected;
+        var method = aaMethods[Antialias.SelectedIndex];
+        var tier = aaTiers[AaQuality.SelectedIndex];
+        bool reconstruct = path && tier.EngineMode == 8 && rayReconstruction;
+        var settings = new GraphicsPreferences(path, PathQuality.SelectedIndex, rasterAa, pathAa,
+            Ssr.IsChecked == true, Ao.IsChecked == true, Ssil.IsChecked == true, Bloom.IsChecked == true,
+            selectedTiers.Select(tier => new SavedTier(tier.Key.Path, tier.Key.Method, tier.Value)).ToArray(),
+            UncapPreview.IsChecked == true);
+        var reply = await renderer.RequestAsync("quality", new
         {
             aa = tier.EngineMode, scale = tier.Scale,
-            ssr = Ssr.IsChecked == true, ao = Ao.IsChecked == true, ssil = Ssil.IsChecked == true,
-            bloom = Bloom.IsChecked == true, path_tracing = path, ray_reconstruction = reconstruct,
-            samples = 1 << Math.Max(0, PathQuality.SelectedIndex)
+            ssr = settings.Reflections, ao = settings.Occlusion, ssil = settings.IndirectLight,
+            bloom = settings.Bloom, path_tracing = path, ray_reconstruction = reconstruct,
+            samples = 1 << Math.Max(0, settings.PathQuality), uncapped = settings.UncapPreview
         });
+        bool actualPath = reply.GetProperty("path_tracing").GetBoolean();
+        GridLines.IsEnabled = !actualPath;
+        if (save)
+        {
+            preferences = preferences with { Graphics = settings };
+            SavePreferences();
+        }
+
+        ApplyGraphicsButton.IsEnabled = revision != graphicsRevision;
+        if (revision == graphicsRevision)
+        {
+            double scale = reply.GetProperty("scale").GetDouble();
+            bool capped = reply.GetProperty("fps_limit").GetInt32() != 0;
+            string mode = actualPath ? "全路径追踪" : "纯光栅";
+            string methodLabel = method.Method is AaMethod.Dlss or AaMethod.Fsr2 or AaMethod.Msaa
+                ? $"{method.Label} · {tier.Label.Split('(', 2)[0].TrimEnd()}" : method.Label;
+            GraphicsStatus.Text = $"已应用 {mode} · {methodLabel} · 3D 比例设定 {scale:P0} · "
+                + (capped ? "预览上限 30 FPS" : "预览限帧已关闭");
+        }
     }
 
     private void BuildLighting(JsonElement defaults)
@@ -1112,6 +1162,7 @@ public sealed partial class MainWindow : Window
         string FloorColor = "", GraphicsPreferences? Graphics = null);
     private sealed record GraphicsPreferences(bool Path = false, int PathQuality = 2,
         AaMethod RasterAa = AaMethod.Taa, AaMethod PathAa = AaMethod.Dlss, bool Reflections = true,
-        bool Occlusion = true, bool IndirectLight = true, bool Bloom = true, SavedTier[]? Tiers = null);
+        bool Occlusion = true, bool IndirectLight = true, bool Bloom = true, SavedTier[]? Tiers = null,
+        bool UncapPreview = false);
     private sealed record SavedTier(bool Path, AaMethod Method, int Index);
 }
