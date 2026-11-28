@@ -2,22 +2,30 @@
   <img src="winui/Assets/leonida-mark.png" width="112" height="112" alt="Leonida Customs">
 </p>
 <h1 align="center">Leonida Customs</h1>
-<p align="center">用自己的 GTA VI 游戏资源，在 Windows 上预览和改装载具。</p>
+<p align="center"><strong>挑一辆车，换上配件，在灯光下看看新车漆。</strong><br>面向 Windows 的 GTA VI 离线载具预览与改装工具。</p>
 <p align="center"><a href="README.md">简体中文</a> · <a href="README.en.md">English</a></p>
-<p align="center"><a href="https://github.com/lbyh0116/leonida-customs/releases/latest"><strong>下载 Windows x64 版</strong></a> · <a href="https://github.com/lbyh0116/leonida-customs/issues">反馈问题</a></p>
+<p align="center">
+  <a href="https://github.com/lbyh0116/leonida-customs/releases/latest"><img src="https://img.shields.io/github/v/release/lbyh0116/leonida-customs?style=flat-square&amp;color=0f9d92" alt="GitHub release"></a>
+  <img src="https://img.shields.io/badge/Windows-x64-1575ee?style=flat-square" alt="Windows x64">
+  <img src="https://img.shields.io/badge/WinUI-3-6550db?style=flat-square" alt="WinUI 3">
+  <img src="https://img.shields.io/badge/Languages-2-0f9d92?style=flat-square" alt="支持两种语言">
+</p>
+<p align="center"><a href="https://github.com/lbyh0116/leonida-customs/releases/latest"><strong>↓ 下载 Windows 版</strong></a> &nbsp; · &nbsp; <a href="https://github.com/lbyh0116/leonida-customs/issues">反馈问题</a></p>
 
 ---
 
-Leonida Customs 用你提供的 Xbox 版游戏资源，在独立摄影棚里预览载具、试装配件和调整车漆。软件只读访问本地资源，无需启动游戏。源码与安装包均不含游戏资源。
+## 下载与运行
 
-## 快速开始
+最新正式版为 **v0.2.0 · Windows x64 便携版**。
 
-1. 确认系统为 Windows 10 2004（19041）或更高版本，显卡与驱动支持 Vulkan。云母背景需要 Windows 11。
-2. 下载 Windows x64 ZIP、完整解压，然后运行 `Start-Viewer.cmd`。首次运行联网下载并校验 Godot 与 SixNG，后续可离线运行。
-3. 点「打开游戏目录」，或在「设置 → 游戏文件位置」校验包含 `levels.rpf`、`packs.rpf` 和 `data.rpf` 的目录。已验证 Xbox Series 1.0.2.1。首次扫描可能需要几分钟，之后复用索引。
-4. 在「设置 → 界面语言」选择简体中文或 English，然后点击「应用语言」。
+1. 下载 [Leonida-Customs-0.2.0-windows-x64.zip](https://github.com/lbyh0116/leonida-customs/releases/download/v0.2.0/Leonida-Customs-0.2.0-windows-x64.zip)，完整解压到空间充足的磁盘。
+2. 运行 `Start-Viewer.cmd`。首次启动会联网下载并校验 Godot 和 SixNG，之后可离线使用。
+3. 点击「打开游戏目录」，选择自己 Xbox 版游戏副本中包含 `levels.rpf`、`packs.rpf` 和 `data.rpf` 的文件夹。首次建立索引可能需要几分钟。
+4. 在左侧载具库选择车型。预览加载后，可在右侧选择原厂配置、试装配件或调整车漆。
 
-索引、预览缓存、设置与日志放在软件目录下的 `work`。可以把整个软件目录放在空间充足的磁盘上，也可以通过 `Start-Viewer.cmd "--game=G:\你的游戏目录"` 指定资源位置。
+需要 Windows 10 2004（内部版本 19041）或更高版本，以及支持 Vulkan 的显卡和驱动。已验证的游戏版本为 Xbox Series 1.0.2.1。软件只读访问玩家提供的资源，发行包不含游戏文件。
+
+在「设置 → 界面语言」选择简体中文或 English，再点击「应用语言」。索引、缓存、设置和日志保存在便携目录的 `work` 文件夹。
 
 ## 车库与摄影棚
 
@@ -61,16 +69,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Install-ViewerRuntime.ps1 
 
 ## 从源码构建
 
-安装 .NET 10 SDK.
+安装 .NET 10 SDK。
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1
 .\Start-Viewer.cmd
 ```
 
-- `Build-WinUI.ps1` — 编译 WinUI.
-- `Package-Viewer.ps1` — 生成便携 ZIP 与 SHA-256 至 `work/dist`.
-- `main.tscn` — 单独调试摄影棚.
+- `Build-WinUI.ps1` — 编译 WinUI。
+- `Package-Viewer.ps1` — 生成便携 ZIP 与 SHA-256 至 `work/dist`。
+- `main.tscn` — 单独调试摄影棚。
 
 ```powershell
 .\tools\godot-rtx\godot.windows.editor.x86_64.exe --path . --script tests/render_mode_smoke.gd -- --require-rtx --require-dlss

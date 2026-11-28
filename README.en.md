@@ -2,22 +2,30 @@
   <img src="winui/Assets/leonida-mark.png" width="112" height="112" alt="Leonida Customs">
 </p>
 <h1 align="center">Leonida Customs</h1>
-<p align="center">Preview and customize GTA VI vehicles on Windows with your own game files.</p>
+<p align="center"><strong>Pick a vehicle, fit new parts, and see how the paint catches the light.</strong><br>An offline GTA VI vehicle viewer and customization studio for Windows.</p>
 <p align="center"><a href="README.md">简体中文</a> · <a href="README.en.md">English</a></p>
-<p align="center"><a href="https://github.com/lbyh0116/leonida-customs/releases/latest"><strong>Download for Windows x64</strong></a> · <a href="https://github.com/lbyh0116/leonida-customs/issues">Report an issue</a></p>
+<p align="center">
+  <a href="https://github.com/lbyh0116/leonida-customs/releases/latest"><img src="https://img.shields.io/github/v/release/lbyh0116/leonida-customs?style=flat-square&amp;color=0f9d92" alt="GitHub release"></a>
+  <img src="https://img.shields.io/badge/Windows-x64-1575ee?style=flat-square" alt="Windows x64">
+  <img src="https://img.shields.io/badge/WinUI-3-6550db?style=flat-square" alt="WinUI 3">
+  <img src="https://img.shields.io/badge/Languages-2-0f9d92?style=flat-square" alt="Two languages">
+</p>
+<p align="center"><a href="https://github.com/lbyh0116/leonida-customs/releases/latest"><strong>↓ Download for Windows</strong></a> &nbsp; · &nbsp; <a href="https://github.com/lbyh0116/leonida-customs/issues">Report an issue</a></p>
 
 ---
 
-Leonida Customs is a Windows garage for previewing vehicles, trying parts, and comparing paint finishes using your own Xbox game assets. It reads your files locally in a standalone studio while the game is closed. The source and downloads ship without game assets.
+## Download and run
 
-## Quick start
+Latest release — **v0.2.0 · Windows x64 portable**.
 
-1. Use Windows 10 2004 (build 19041) or later with a Vulkan-capable GPU and driver. The optional Mica backdrop requires Windows 11.
-2. Download and fully extract the Windows x64 ZIP, then run `Start-Viewer.cmd`. The first launch downloads and verifies Godot and SixNG. Subsequent launches can run offline.
-3. Choose **Open game folder**, or validate the folder under **Settings → Game folder**. It must contain `levels.rpf`, `packs.rpf`, and `data.rpf`. Xbox Series 1.0.2.1 has been tested. The first scan may take a few minutes and later launches reuse the index.
-4. Choose **English** or **简体中文** in **Settings → Display language**, then select **Apply language**.
+1. Download [Leonida-Customs-0.2.0-windows-x64.zip](https://github.com/lbyh0116/leonida-customs/releases/download/v0.2.0/Leonida-Customs-0.2.0-windows-x64.zip) and extract the entire archive to a drive with room for the preview cache.
+2. Run `Start-Viewer.cmd`. The first launch downloads and verifies Godot and SixNG. Later sessions can run offline.
+3. Select **Open game folder** and choose the folder in your Xbox game copy containing `levels.rpf`, `packs.rpf`, and `data.rpf`. The first scan can take a few minutes.
+4. Choose a model in the vehicle library on the left. Once the preview loads, use the panel on the right to select a stock configuration, try parts, or change the paint.
 
-Indexes, cached previews, settings, and logs live in the portable app's `work` directory. Move the full folder to a drive with enough space, or pass a folder with `Start-Viewer.cmd "--game=G:\Your Game Folder"`.
+Requires Windows 10 version 2004 (build 19041) or later and a Vulkan-capable GPU and driver. Tested with Xbox Series game version 1.0.2.1. The viewer reads your own assets locally. The download contains no game files.
+
+To switch languages, open **Settings → Display language**, select English or 简体中文, and choose **Apply language**. Indexes, caches, settings, and logs are stored in the portable folder under `work`.
 
 ## Garage and studio
 
@@ -68,9 +76,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1
 .\Start-Viewer.cmd
 ```
 
-- `Build-WinUI.ps1` —  Build the Windows app.
-- `Package-Viewer.ps1` —  Create the portable ZIP and its checksum in `work/dist`.
-- `main.tscn` —  Debug the studio without the WinUI host.
+- `Build-WinUI.ps1` — Build the Windows app.
+- `Package-Viewer.ps1` — Create the portable ZIP and its checksum in `work/dist`.
+- `main.tscn` — Debug the studio without the WinUI host.
 
 ```powershell
 .\tools\godot-rtx\godot.windows.editor.x86_64.exe --path . --script tests/render_mode_smoke.gd -- --require-rtx --require-dlss
