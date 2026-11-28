@@ -32,7 +32,7 @@ try {
     try {
         foreach ($Name in @('LICENSE', 'README.md', 'README.en.md', 'SHARE-CODE.md', 'winui/Assets/leonida-mark.png', 'project.godot', 'main.tscn',
             'preview-worker.tscn', 'Install-ViewerRuntime.ps1', 'Start-Viewer.cmd', 'Start-Viewer-Safe-Mode.cmd',
-            'Start-Viewer-RayTracing.cmd', 'tools/.gdignore', 'tools/install-sixng.ps1', 'tools/install-rtx.ps1')) {
+            'Start-Viewer-RayTracing.cmd', 'tools/.gdignore', 'tools/download-runtime.ps1', 'tools/install-sixng.ps1', 'tools/install-rtx.ps1')) {
             Write-ZipFile $Archive (Join-Path $Root $Name) $Name
         }
         foreach ($Source in Get-ChildItem -LiteralPath (Join-Path $Root 'src') -File) {

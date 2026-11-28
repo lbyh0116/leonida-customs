@@ -10,18 +10,15 @@ $Exe = Join-Path $Destination 'sixng.exe'
 
 if (Test-Path -LiteralPath $Exe -PathType Leaf) {
     Write-Output $Exe
-    exit 0
+    return
 }
 
 $null = New-Item -ItemType Directory -Path $WorkDirectory -Force
 $env:TEMP = $WorkDirectory
 $env:TMP = $WorkDirectory
+. (Join-Path $ToolDirectory 'download-runtime.ps1')
 $Zip = Join-Path $WorkDirectory "$Name.zip"
-curl.exe --fail --silent --show-error --location $Url --output $Zip
-if ($LASTEXITCODE -ne 0) { throw 'SixNG download failed.' }
-if ((Get-FileHash -LiteralPath $Zip -Algorithm SHA256).Hash -ne $Sha256) {
-    throw 'SixNG download does not match the expected SHA256.'
-}
+Get-VerifiedRuntimeArchive -Name SixNG -Url $Url -Archive $Zip -Sha256 $Sha256
 tar.exe -xf $Zip -C $ToolDirectory
 if ($LASTEXITCODE -ne 0 -or !(Test-Path -LiteralPath $Exe -PathType Leaf)) {
     throw 'Could not extract the SixNG release.'

@@ -16,9 +16,9 @@
 
 ## 下载与运行
 
-最新正式版为 **v0.2.0 · Windows x64 便携版**。
+最新正式版为 **v0.2.1 · Windows x64 便携版**。
 
-1. 下载 [Leonida-Customs-0.2.0-windows-x64.zip](https://github.com/lbyh0116/leonida-customs/releases/download/v0.2.0/Leonida-Customs-0.2.0-windows-x64.zip)，完整解压到空间充足的磁盘。
+1. 下载 [Leonida-Customs-0.2.1-windows-x64.zip](https://github.com/lbyh0116/leonida-customs/releases/download/v0.2.1/Leonida-Customs-0.2.1-windows-x64.zip)，完整解压到空间充足的磁盘。
 2. 运行 `Start-Viewer.cmd`。首次启动会联网下载并校验 Godot 和 SixNG，之后可离线使用。
 3. 点击「打开游戏目录」，选择自己 Xbox 版游戏副本中包含 `levels.rpf`、`packs.rpf` 和 `data.rpf` 的文件夹。首次建立索引可能需要几分钟。
 4. 在左侧载具库选择车型。预览加载后，可在右侧选择原厂配置、试装配件或调整车漆。
@@ -26,6 +26,8 @@
 需要 Windows 10 2004（内部版本 19041）或更高版本，以及支持 Vulkan 的显卡和驱动。已验证的游戏版本为 Xbox Series 1.0.2.1。软件只读访问玩家提供的资源，发行包不含游戏文件。
 
 在「设置 → 界面语言」选择简体中文或 English，再点击「应用语言」。索引、缓存、设置和日志保存在便携目录的 `work` 文件夹。
+
+首次下载遇到断线时，重新运行启动脚本即可尝试续传。也可在网络稳定的设备上下载 [Godot ZIP](https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_win64.exe.zip) 和 [SixNG ZIP](https://github.com/holdmysocks/SixNG/releases/download/v0.11.0/SixNG-v0.11.0-windows-x64.zip)，保留原文件名，放入软件目录的 `work` 文件夹，再运行启动脚本校验并安装。
 
 ## 车库与摄影棚
 

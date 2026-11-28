@@ -16,9 +16,9 @@
 
 ## Download and run
 
-Latest release — **v0.2.0 · Windows x64 portable**.
+Latest release — **v0.2.1 · Windows x64 portable**.
 
-1. Download [Leonida-Customs-0.2.0-windows-x64.zip](https://github.com/lbyh0116/leonida-customs/releases/download/v0.2.0/Leonida-Customs-0.2.0-windows-x64.zip) and extract the entire archive to a drive with room for the preview cache.
+1. Download [Leonida-Customs-0.2.1-windows-x64.zip](https://github.com/lbyh0116/leonida-customs/releases/download/v0.2.1/Leonida-Customs-0.2.1-windows-x64.zip) and extract the entire archive to a drive with room for the preview cache.
 2. Run `Start-Viewer.cmd`. The first launch downloads and verifies Godot and SixNG. Later sessions can run offline.
 3. Select **Open game folder** and choose the folder in your Xbox game copy containing `levels.rpf`, `packs.rpf`, and `data.rpf`. The first scan can take a few minutes.
 4. Choose a model in the vehicle library on the left. Once the preview loads, use the panel on the right to select a stock configuration, try parts, or change the paint.
@@ -26,6 +26,8 @@ Latest release — **v0.2.0 · Windows x64 portable**.
 Requires Windows 10 version 2004 (build 19041) or later and a Vulkan-capable GPU and driver. Tested with Xbox Series game version 1.0.2.1. The viewer reads your own assets locally. The download contains no game files.
 
 To switch languages, open **Settings → Display language**, select English or 简体中文, and choose **Apply language**. Indexes, caches, settings, and logs are stored in the portable folder under `work`.
+
+If the first download stops, run the launcher again to resume. You can also download the [Godot ZIP](https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_win64.exe.zip) and [SixNG ZIP](https://github.com/holdmysocks/SixNG/releases/download/v0.11.0/SixNG-v0.11.0-windows-x64.zip) on a stable connection. Keep the original filenames, place the ZIPs in the app's `work` folder, then run the launcher to verify and install them.
 
 ## Garage and studio
 

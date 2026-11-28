@@ -7,6 +7,7 @@ $null = New-Item -ItemType Directory -Force -Path $Work
 $null = New-Item -ItemType File -Force -Path (Join-Path $Work '.gdignore')
 $env:TEMP = $Work
 $env:TMP = $Work
+. (Join-Path $Root 'tools/download-runtime.ps1')
 
 function Install-Godot([string]$Version, [string]$Folder, [string]$Sha256) {
     $GodotFolder = Join-Path $Root $Folder
@@ -19,11 +20,7 @@ function Install-Godot([string]$Version, [string]$Folder, [string]$Sha256) {
     $null = New-Item -ItemType Directory -Force -Path $GodotFolder
     $Zip = Join-Path $Work "$GodotName.exe.zip"
     $Url = "https://github.com/godotengine/godot-builds/releases/download/$Version/$GodotName.exe.zip"
-    curl.exe --fail --silent --show-error --location $Url --output $Zip
-    if ($LASTEXITCODE -ne 0) { throw 'Godot download failed.' }
-    if ((Get-FileHash -LiteralPath $Zip -Algorithm SHA256).Hash -ne $Sha256) {
-        throw 'Godot download does not match the expected SHA256.'
-    }
+    Get-VerifiedRuntimeArchive -Name Godot -Url $Url -Archive $Zip -Sha256 $Sha256
     tar.exe -xf $Zip -C $GodotFolder
     if ($LASTEXITCODE -ne 0 -or !(Test-Path -LiteralPath $GodotExe -PathType Leaf)) {
         throw 'Could not extract Godot.'

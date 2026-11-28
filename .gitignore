@@ -2,6 +2,7 @@
 /work/
 /tools/*
 !/tools/.gdignore
+!/tools/download-runtime.ps1
 !/tools/install-sixng.ps1
 !/tools/install-rtx.ps1
 /build/

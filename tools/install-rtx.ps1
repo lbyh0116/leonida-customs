@@ -10,6 +10,7 @@ $Exe = Join-Path $Target $ExeName
 $null = New-Item -ItemType Directory -Force -Path $Work,$Target
 $env:TEMP = $Work
 $env:TMP = $Work
+. (Join-Path $PSScriptRoot 'download-runtime.ps1')
 
 if (!(Test-Path -LiteralPath $Exe)) {
     if (!(Get-Command gh -ErrorAction SilentlyContinue)) {
@@ -31,14 +32,8 @@ if (!(Test-Path -LiteralPath $Exe)) {
 if ($DLSS) {
     $Archive = Join-Path $Work 'streamline-2.10.0.zip'
     $Hash = 'B0CC810C86B0335D4FD76A02D35FFF53E528D2FB66C29860565130F76C9383B0'
-    if (!(Test-Path -LiteralPath $Archive) -or (Get-FileHash -LiteralPath $Archive -Algorithm SHA256).Hash -ne $Hash) {
-        $Url = 'https://github.com/NVIDIA-RTX/Streamline/releases/download/v2.10.0/streamline-sdk-v2.10.0.zip'
-        curl.exe --fail --silent --show-error --location $Url --output $Archive
-        if ($LASTEXITCODE -ne 0) { throw 'NVIDIA Streamline download failed.' }
-    }
-    if ((Get-FileHash -LiteralPath $Archive -Algorithm SHA256).Hash -ne $Hash) {
-        throw 'The Streamline download does not match the expected SHA-256.'
-    }
+    $Url = 'https://github.com/NVIDIA-RTX/Streamline/releases/download/v2.10.0/streamline-sdk-v2.10.0.zip'
+    Get-VerifiedRuntimeArchive -Name 'NVIDIA Streamline' -Url $Url -Archive $Archive -Sha256 $Hash
     $Staging = Join-Path $Work 'streamline-2.10.0'
     $null = New-Item -ItemType Directory -Force -Path $Staging
     tar.exe -xf $Archive -C $Staging bin/x64

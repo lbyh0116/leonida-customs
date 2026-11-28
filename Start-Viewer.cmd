@@ -17,7 +17,7 @@ if exist "%VIEWER_ROOT%tools\SixNG-v0.11.0-windows-x64\sixng.exe" goto launch
 echo Installing Godot and SixNG from their official releases. Internet access is needed for this first launch.
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%VIEWER_ROOT%Install-ViewerRuntime.ps1"
 if errorlevel 1 (
-    echo Runtime setup did not complete. Check the message above and retry Start-Viewer.cmd.
+    echo Runtime setup did not complete. Check the message above, then rerun Start-Viewer.cmd to resume.
     pause
     exit /b 1
 )
