@@ -136,6 +136,8 @@ func load_source(path: String) -> Dictionary:
 		var make_hash := VEHICLE_CATALOG.label_hash(info.get("vehicleMakeName"))
 		var handling_hash := VEHICLE_CATALOG.label_hash(info.get("handlingId"))
 		var card: Dictionary = progress_cards.get(record.model, {})
+		var original_name: String = local_names.get(name_hash, english_name)
+		var name := VEHICLE_CATALOG.reviewed_name(record.model, english_name, original_name)
 		var configurations: Array = []
 		var stock_parts: Array[Dictionary] = []
 		var palette_colour := _palette_colour(record.get("palettes", []))
@@ -156,7 +158,8 @@ func load_source(path: String) -> Dictionary:
 		stock[record.model] = stock_parts
 		records[record.model] = {
 			"id": record.model,
-			"name": local_names.get(name_hash, english_name),
+			"name": name,
+			"originalName": original_name if name != original_name else "",
 			"make": local_names.get(make_hash, english_make),
 			"englishName": english_name,
 			"englishMake": english_make,

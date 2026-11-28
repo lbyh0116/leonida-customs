@@ -11,6 +11,45 @@ const MODEL_CLASSES := {
 	"dominatorbuggy": 9, "marshall": 9, "patriot3": 9
 }
 const TRAILERS := ["baletrailer", "freighttrailer", "graintrailer", "quadtrailer", "voyager"]
+## Reviewed against https://www.gtacn.org/vehicles using the GTA VI display name and variant.
+const REVIEWED_NAMES := {
+	"asterope2": ["Asterope GZ", "爱硕普 GZ"],
+	"baletrailer": ["Bale Trailer", "草捆拖车"],
+	"baller8": ["Baller ST-D", "行者 ST-D"],
+	"bulldozer": ["Bulldozer", "推土机"],
+	"carbonrs": ["Carbon RS", "碳纤 RS 型"],
+	"cavalcade3": ["Cavalcade XL", "骑兵 XL"],
+	"comet7": ["Comet S2", "陆上彗星 S2"],
+	"coquette4": ["Coquette D10", "艳妇 D10"],
+	"dominator7": ["Dominator ASP", "公路霸者 ASP"],
+	"dominator9": ["Dominator GT", "公路霸者 GT"],
+	"double": ["Double-T", "双 T"],
+	"drafter": ["8F Drafter", "8F 尾随者"],
+	"graintrailer": ["graintrailer", "谷物拖车"],
+	"granger": ["Granger", "屌王"],
+	"granger3600lx": ["Granger 3600LX", "屌王 3600LX"],
+	"impaler5": ["'95 Impaler SZ", "'95刺刑官 SZ"],
+	"italirsx": ["Itali RSX", "义塔力 RSX"],
+	"landstalker2": ["Landstalker XL", "追捕者 XL"],
+	"lazer": ["P-996 LAZER", "P-996 天煞"],
+	"nimbus": ["Nimbus", "灵气号"],
+	"penumbraff": ["'97 Penumbra FF", "'97半影使者 FF"],
+	"reblagts": ["Rebla GTS", "瑞巴 GTS"],
+	"sandking_4dr": ["Sandking XL", "大脚霸王 XL"],
+	"schafter3": ["Schafter V12", "莎夫特 V12"],
+	"shamal": ["Shamal", "夏玛尔客机"],
+	"tailgater2": ["Tailgater S", "密探 S"],
+	"tulip2": ["'78 Tulip M-100", "'78郁金 M-100"],
+	"vigero3": ["Vigero ZX Convertible", "活力够 ZX 敞篷版"],
+	"yosemite1500": ["Yosemite 1500", "约塞米蒂 1500"],
+}
+
+
+static func reviewed_name(model: String, english_name: String, original_name: String) -> String:
+	var reviewed: Array = REVIEWED_NAMES.get(model, [])
+	if not reviewed.is_empty() and english_name.nocasecmp_to(reviewed[0]) == 0:
+		return reviewed[1]
+	return original_name
 
 
 static func category(model: String, info: Dictionary, progress_category: String) -> String:

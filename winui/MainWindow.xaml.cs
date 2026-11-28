@@ -404,7 +404,7 @@ public sealed partial class MainWindow : Window
         var category = Category.SelectedIndex > 0 ? Category.SelectedItem as string : null;
         var filtered = vehicles.Where(v =>
             (category is null || v.Category == category) &&
-            (query.Length == 0 || (v.Name + " " + v.Make + " " + v.EnglishName + " " + v.EnglishMake + " " + v.Id).Contains(query, StringComparison.OrdinalIgnoreCase)))
+            (query.Length == 0 || $"{v.Name} {v.OriginalName} {v.Make} {v.EnglishName} {v.EnglishMake} {v.Id}".Contains(query, StringComparison.OrdinalIgnoreCase)))
             .OrderBy(v => v.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
         populating = true;
         VehicleList.ItemsSource = filtered;
@@ -1392,7 +1392,7 @@ public sealed partial class MainWindow : Window
     public sealed record Vehicle(string Id, string Name, string Make, string Category, List<FactoryOption> Configurations,
         string? EnglishName, string? EnglishMake, string? Drive, int? Gears, double? Mass,
         double? Speed, double? Acceleration, double? RoadHandling, double? OffroadHandling,
-        double? Strength, int? RoadRating, int? DirtRating)
+        double? Strength, int? RoadRating, int? DirtRating, string? OriginalName)
     {
         public string Subtitle => string.IsNullOrEmpty(Make) ? Id : $"{Make} · {Id}";
     }

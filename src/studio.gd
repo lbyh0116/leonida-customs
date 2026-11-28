@@ -401,7 +401,8 @@ func _filter() -> void:
 	for vehicle: Dictionary in records:
 		if not category.is_empty() and category != vehicle.category:
 			continue
-		if not query.is_empty() and not ("%s %s %s" % [vehicle.name, vehicle.make, vehicle.id]).to_lower().contains(query):
+		var searchable := "%s %s %s %s %s %s" % [vehicle.name, vehicle.originalName, vehicle.make, vehicle.englishName, vehicle.englishMake, vehicle.id]
+		if not query.is_empty() and not searchable.to_lower().contains(query):
 			continue
 		var index := list.add_item(str(vehicle.name))
 		list.set_item_metadata(index, vehicle.id)
