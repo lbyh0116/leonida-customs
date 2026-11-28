@@ -61,6 +61,8 @@ public sealed partial class MainWindow
             + F("渲染器 {0}{1} · 路径追踪 {2} · DLSS {3}", connected ? T("已连接") : T("未连接"),
                 safeMode ? T(" · 安全模式") : "", T(pathAvailable ? "可用" : "不可用"), T(dlssAvailable ? "可用" : "不可用")) + "\n"
             + F("视口 {0}", previewBitmap is { } bitmap ? $"{bitmap.PixelWidth} × {bitmap.PixelHeight}" : T("待初始化"));
+        if (rendererWindowHideUnconfirmed)
+            diagnostics += "\n" + T("未能确认渲染辅助窗口已隐藏。");
         var content = new StackPanel { Spacing = 10 };
         content.Children.Add(new TextBlock
         {

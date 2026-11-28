@@ -111,7 +111,7 @@ internal static class UiText
         ["开启"] = "On",
         ["关闭"] = "Off",
         ["关闭对话框"] = "Close",
-        ["未能隐藏渲染辅助窗口。"] = "Could not hide the renderer window.",
+        ["未能确认渲染辅助窗口已隐藏。"] = "Could not confirm the renderer window was hidden.",
         ["用「打开游戏目录」选择自己的 Xbox 版资源。需要帮助时点右上角「帮助」。"] = "Choose your Xbox game files with Open game folder. See Help for details.",
         ["预览进程启动超时。可使用安全模式或从「帮助」打开日志。"] = "The renderer timed out. Try Safe Mode or open the logs from Help.",
         ["找不到 project.godot。请从项目目录的启动脚本打开。"] = "project.godot was not found. Use the launcher in the project folder.",

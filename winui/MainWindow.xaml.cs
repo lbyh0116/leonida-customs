@@ -44,6 +44,7 @@ public sealed partial class MainWindow : Window
     private BuildCode? displayed;
     private bool started;
     private bool connected;
+    private bool rendererWindowHideUnconfirmed;
     private bool busy;
     private bool populating;
     private bool partsLoaded;
@@ -193,14 +194,17 @@ public sealed partial class MainWindow : Window
             });
             var hello = await renderer.StartAsync(root, safeMode);
             var hidden = RendererWindow.TryHide(renderer.ProcessId);
-            for (var attempt = 0; !hidden && attempt < 20; attempt++)
+            for (var attempt = 0; !hidden && !closing && attempt < 20; attempt++)
             {
                 await Task.Delay(50);
+                if (closing)
+                    return;
                 hidden = RendererWindow.TryHide(renderer.ProcessId);
             }
-            if (!hidden)
-                throw new InvalidOperationException(T("未能隐藏渲染辅助窗口。"));
+            if (closing)
+                return;
 
+            rendererWindowHideUnconfirmed = !hidden;
             connected = true;
             var capabilities = hello.GetProperty("capabilities");
             pathAvailable = capabilities.GetProperty("path_tracing").GetBoolean();
