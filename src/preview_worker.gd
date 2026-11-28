@@ -157,18 +157,25 @@ func _handle(request: Dictionary) -> void:
 				_busy = false
 		"quality":
 			_fps_limit = 0 if data.get("uncapped", false) else DEFAULT_PREVIEW_FPS
+			var capabilities: Dictionary = _stage.render_capabilities()
 			var aa := int(data.aa)
-			var path_tracing: bool = data.path_tracing and _stage.render_capabilities().path_tracing
+			var scale := float(data.scale)
+			if aa == 8 and not capabilities.dlss:
+				aa = 3
+				scale = 1.0
+			var path_tracing: bool = data.path_tracing and capabilities.path_tracing
 			# MSAA resolves rasterized geometry, not the ray-traced image.
 			var effective_aa := 0 if path_tracing and aa in [4, 5, 6] else aa
-			_stage.set_quality(effective_aa, float(data.scale))
+			var reconstruct: bool = path_tracing and effective_aa == 8 and capabilities.ray_reconstruction and data.ray_reconstruction
+			_stage.set_quality(effective_aa, scale)
 			_stage.set_effects(data.ssr, data.ao, data.ssil, data.bloom)
-			_path_active = _stage.set_render_mode(data.path_tracing, int(data.samples), data.ray_reconstruction)
-			var configuration := [data.path_tracing, data.samples, data.aa, data.scale, data.ray_reconstruction]
+			_path_active = _stage.set_render_mode(path_tracing, int(data.samples), reconstruct)
+			var configuration := [_path_active, data.samples if _path_active else 0, effective_aa, scale, reconstruct]
 			if configuration != _path_configuration:
 				_prepare_path_frame()
 				_path_configuration = configuration
 			result["path_tracing"] = _path_active
+			result["ray_reconstruction"] = reconstruct
 			result["aa"] = effective_aa
 			result["scale"] = _stage.viewport.scaling_3d_scale
 			result["fps_limit"] = _fps_limit
@@ -226,7 +233,7 @@ func _run_asset_command(command: String, data: Dictionary) -> Dictionary:
 			if not result.get("ok", false):
 				return result
 			var asset: Dictionary = _stage.show_model(result.path, model == _preview_model,
-				bool(data.get("reset_paint", false)), str(result.get("paintFallback", "")))
+				bool(data.get("reset_paint", false)), str(result.get("paintFallback", "")), result.get("trackGear", {}))
 			if asset.has("error"):
 				return {"ok": false, "error": asset.error}
 			_preview_model = model

@@ -11,7 +11,7 @@ var _texture_roots: PackedStringArray
 var _textures: Dictionary = {}
 
 
-func apply(geometries: Array[Node], state: GLTFState, path: String, bounds: AABB, factory_paint: Color) -> void:
+func apply(geometries: Array[Node], state: GLTFState, path: String, bounds: AABB, factory_paint: Color, tracked: Dictionary) -> void:
 	var vehicle_midline := bounds.get_center().x
 	var directory := path.get_base_dir()
 	for i in range(4):
@@ -28,6 +28,9 @@ func apply(geometries: Array[Node], state: GLTFState, path: String, bounds: AABB
 		if materials[i] != null:
 			by_material[materials[i]] = records[i].get("extras", {})
 	for node: MeshInstance3D in geometries:
+		# Road-wheel polish and brake backing do not apply to track rollers.
+		if tracked.has(node):
+			continue
 		# Godot's imported mesh-node names keep SixNG's wheel and geometry
 		# labels, with the original '@' and '/' replaced by underscores.
 		var name := str(node.name).to_lower()

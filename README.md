@@ -41,8 +41,8 @@ Leonida Customs 用玩家自己提供的 Xbox 版资源组装并渲染载具。�
 | 模式 | 可用选项 |
 | --- | --- |
 | 纯光栅（默认） | Godot Forward+。支持 TAA、FXAA、SMAA、MSAA 2×/4×/8× 和 FSR 2.2，可单独开关反射、环境光遮蔽和间接光照。 |
-| 全路径追踪（可选） | 使用 NVIDIA Godot RTX，提供每像素 1、2、4 或 8 个样本。首次切换或载入新材质时可能需要等待着色器。 |
-| NVIDIA DLSS（可选） | 需 Streamline 和支持的 RTX GPU。DLSS 4.5 超分与 DLAA 使用 Transformer Model M。提供 DLAA、质量、平衡和性能档位。路径追踪下可单独开关 DLSS 光线重建。 |
+| 全路径追踪（可选） | 需 Godot RTX 和当前渲染显卡支持硬件光追管线。提供每像素 1、2、4 或 8 个样本。首次切换或载入新材质时可能需要等待着色器。 |
+| NVIDIA DLSS（可选） | 需 Streamline 和支持的 NVIDIA RTX GPU。DLSS 4.5 超分与 DLAA 使用 Transformer Model M。提供 DLAA、质量、平衡和性能档位。路径追踪下可单独开关 DLSS 光线重建。AMD 显卡可选 FSR 2.2。 |
 
 ### 安装可选 RTX 运行时
 
@@ -52,7 +52,7 @@ Leonida Customs 用玩家自己提供的 Xbox 版资源组装并渲染载具。�
 powershell -NoProfile -ExecutionPolicy Bypass -File .\Install-ViewerRuntime.ps1 -DLSS
 ```
 
-用 `Start-Viewer-RayTracing.cmd` 可直接进入路径追踪。安装脚本使用 [NVIDIA 官方 Windows 构建](https://github.com/NVIDIA-RTX/godot/actions/runs/41390391716) 和 [Streamline 2.10.0](https://github.com/NVIDIA-RTX/Streamline/releases/tag/v2.10.0)。构建归档到期后，可从 [对应的 NVIDIA Godot 提交](https://github.com/NVIDIA-RTX/godot/tree/49a825dc52c0f1892ff5ce5cdbbe7572c638d41a) 编译 Windows x64 编辑器，并把 `godot.windows.editor.x86_64.exe` 放进 `tools/godot-rtx`。
+用 `Start-Viewer-RayTracing.cmd` 启动时，支持路径追踪的设备会直接进入该模式。安装脚本使用 [NVIDIA 官方 Windows 构建](https://github.com/NVIDIA-RTX/godot/actions/runs/41390391716) 和 [Streamline 2.10.0](https://github.com/NVIDIA-RTX/Streamline/releases/tag/v2.10.0)。构建归档到期后，可从 [对应的 NVIDIA Godot 提交](https://github.com/NVIDIA-RTX/godot/tree/49a825dc52c0f1892ff5ce5cdbbe7572c638d41a) 编译 Windows x64 编辑器，并把 `godot.windows.editor.x86_64.exe` 放进 `tools/godot-rtx`。
 
 ## 当前兼容范围
 

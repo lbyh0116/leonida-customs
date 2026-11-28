@@ -532,7 +532,7 @@ func _render(config: int, picks: Array) -> bool:
 	_status("正在加载整车 GLB…")
 	await get_tree().process_frame
 	var imported: Dictionary = preview_stage.show_model(result.path, shown.get("model") == selected,
-		false, str(result.get("paintFallback", "")))
+		false, str(result.get("paintFallback", "")), result.get("trackGear", {}))
 	_set_busy(false)
 	if imported.has("error"):
 		if shown.is_empty():

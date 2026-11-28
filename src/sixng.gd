@@ -22,6 +22,7 @@ var unnamed := 0
 var _parts: Dictionary = {}
 var _stock: Dictionary = {}
 var _wheel_record: Dictionary = {}
+var _rhino_mounts: Array = []
 var _pid := 0
 
 
@@ -179,6 +180,7 @@ func load_source(path: String) -> Dictionary:
 	_parts.clear()
 	_stock = stock
 	_wheel_record = {}
+	_rhino_mounts = []
 	return {"ok": true}
 
 
@@ -243,7 +245,7 @@ func preview(model: String, config: int, selection: Array) -> Dictionary:
 			if wheel_model.is_empty():
 				regular_picks.append(id)
 			elif option.slot_name in ["rims_front", "rims_rear", "tyres_rear"]:
-				if not option.stockConfigs.has(config):
+				if (model != "rhino" or option.slot_name == "tyres_rear") and not option.stockConfigs.has(config):
 					wheel_warnings.append("当前解码器无法单独预览这个车轴的 %s，该选项未应用。" % wheel_model)
 			else:
 				wheel_choices["rim_" if wheel_model.begins_with("rim_") else "tyre_"] = wheel_model
@@ -256,8 +258,9 @@ func preview(model: String, config: int, selection: Array) -> Dictionary:
 	var path := folder.path_join("vehicle.glb")
 	var info_path := folder.path_join("preview.json")
 	var metadata := _read_dictionary(info_path)
+	var track_gear := await _rhino_track_gear(config, selection) if model == "rhino" else {}
 	if not metadata.is_empty() and FileAccess.file_exists(path):
-		return {"ok": true, "path": path, "asset": metadata, "paintFallback": paint_fallback}
+		return {"ok": true, "path": path, "asset": metadata, "paintFallback": paint_fallback, "trackGear": track_gear}
 	if DirAccess.make_dir_recursive_absolute(folder) != OK:
 		return _error("无法创建预览缓存目录。")
 	var building := folder.path_join("vehicle-%s.glb" % OS.get_process_id())
@@ -292,7 +295,34 @@ func preview(model: String, config: int, selection: Array) -> Dictionary:
 		"issues": exported.get("left_out", []).size() + exported.get("not_fitted", []).size() + exported.get("warnings", []).size()
 	}
 	_write_dictionary(info_path, metadata)
-	return {"ok": true, "path": path, "asset": metadata, "paintFallback": paint_fallback}
+	return {"ok": true, "path": path, "asset": metadata, "paintFallback": paint_fallback, "trackGear": track_gear}
+
+
+func _rhino_track_gear(config: int, selection: Array) -> Dictionary:
+	var parts := await list_parts("rhino")
+	if not parts.get("ok", false):
+		return {}
+	if _rhino_mounts.is_empty():
+		var chassis := await _preview_base("rhino")
+		if not chassis.get("ok", false):
+			return {}
+		_rhino_mounts = _read_dictionary(str(chassis.path).get_base_dir().path_join("model.json")).get("wheel_mounts", [])
+	var gear := {"mounts": _rhino_mounts}
+	for slot in ["rims_front", "rims_rear"]:
+		var rim := ""
+		for option: Dictionary in parts.parts:
+			if option.slot_name != slot:
+				continue
+			if selection.has(option.id):
+				rim = _wheel_model(option)
+				break
+			if rim.is_empty() and option.stockConfigs.has(config):
+				rim = _wheel_model(option)
+		if matches_pattern(rim, MODEL_PATTERN):
+			var asset := await _preview_base(rim)
+			if asset.get("ok", false):
+				gear[slot] = asset.path
+	return gear
 
 
 static func _paint_hex(colour: Variant) -> String:

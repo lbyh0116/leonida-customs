@@ -4,6 +4,7 @@ signal free_view_changed(active: bool)
 
 const FLOOR_SHADER := preload("res://src/render_studio_floor.gdshader")
 const VehicleMaterials := preload("res://src/vehicle_materials.gd")
+const TrackedRunningGear := preload("res://src/tracked_running_gear.gd")
 const PANEL_SIZE := Vector2(5.5, 7.2)
 const PANEL_HEIGHT := 3.35
 const CAMERA_MIN_HEIGHT := 0.10
@@ -222,19 +223,21 @@ func _update_floor_reflection() -> void:
 
 func render_capabilities() -> Dictionary:
 	var device := RenderingServer.get_rendering_device()
+	var adapter_vendor := RenderingServer.get_video_adapter_vendor()
 	var trace_feature := ClassDB.class_get_integer_constant("RenderingDevice", "SUPPORTS_RAYTRACING_PIPELINE") if ClassDB.class_has_integer_constant("RenderingDevice", "SUPPORTS_RAYTRACING_PIPELINE") else -1
 	var path_tracing := environment.has_method("set_pathtracing_enabled") and device != null and trace_feature >= 0 and device.has_feature(trace_feature)
 	var dlss := false
 	var reconstruction := false
-	if ClassDB.class_has_integer_constant("Viewport", "SCALING_3D_MODE_DLSS") and Engine.has_singleton("Streamline"):
+	if device != null and adapter_vendor.to_lower() == "nvidia" and ClassDB.class_has_integer_constant("Viewport", "SCALING_3D_MODE_DLSS") and Engine.has_singleton("Streamline"):
 		var streamline := Engine.get_singleton("Streamline")
 		dlss = streamline.call("get_capability", ClassDB.class_get_integer_constant("Streamline", "STREAMLINE_CAPABILITY_DLSS"))
-		reconstruction = streamline.call("get_capability", ClassDB.class_get_integer_constant("Streamline", "STREAMLINE_CAPABILITY_DLSS_RR"))
-	return {"path_tracing": path_tracing, "dlss": dlss, "ray_reconstruction": reconstruction}
+		reconstruction = dlss and path_tracing and streamline.call("get_capability", ClassDB.class_get_integer_constant("Streamline", "STREAMLINE_CAPABILITY_DLSS_RR"))
+	return {"path_tracing": path_tracing, "dlss": dlss, "ray_reconstruction": reconstruction, "adapter_vendor": adapter_vendor}
 
 
 func set_render_mode(enabled: bool, samples: int, denoise: bool) -> bool:
-	var path_tracing: bool = enabled and render_capabilities().path_tracing
+	var capabilities := render_capabilities()
+	var path_tracing: bool = enabled and capabilities.path_tracing
 	if path_tracing != _path_tracing:
 		_path_tracing = path_tracing
 		_mirror_dirty = true
@@ -244,7 +247,9 @@ func set_render_mode(enabled: bool, samples: int, denoise: bool) -> bool:
 		environment.call("set_pathtracing_enabled", _path_tracing)
 		environment.call("set_pathtracing_samples_per_pixel", clampi(samples, 1, 16))
 		environment.call("set_pathtracing_max_bounces", 5)
-		var mode := "PT_DENOISER_DLSS_RAY_RECONSTRUCTION" if denoise else "PT_DENOISER_NONE"
+		var dlss_mode := ClassDB.class_get_integer_constant("Viewport", "SCALING_3D_MODE_DLSS") if capabilities.dlss else -1
+		var use_reconstruction: bool = path_tracing and denoise and capabilities.ray_reconstruction and viewport.scaling_3d_mode == dlss_mode
+		var mode := "PT_DENOISER_DLSS_RAY_RECONSTRUCTION" if use_reconstruction else "PT_DENOISER_NONE"
 		environment.call("set_pathtracing_denoiser", ClassDB.class_get_integer_constant("RenderingServer", mode))
 	if _path_tracing and _path_floor_mesh == null:
 		_path_floor_mesh = _make_cyclorama()
@@ -384,7 +389,7 @@ func _update_tire_contacts(geometries: Array[Node]) -> void:
 	_floor_parameter("tire_count", count)
 
 
-func show_model(path: String, preserve_camera := false, reset_paint := false, paint_fallback := "") -> Dictionary:
+func show_model(path: String, preserve_camera := false, reset_paint := false, paint_fallback := "", track_gear: Dictionary = {}) -> Dictionary:
 	var gltf := GLTFDocument.new()
 	var state := GLTFState.new()
 	var error := gltf.append_from_file(path, state)
@@ -400,6 +405,7 @@ func show_model(path: String, preserve_camera := false, reset_paint := false, pa
 	if geometries.is_empty():
 		holder.free()
 		return {"error": "GLB 中没有网格。"}
+	var tracked := TrackedRunningGear.fit(imported, geometries, track_gear)
 	var bounds := AABB()
 	var initialized := false
 	for child: MeshInstance3D in geometries:
@@ -418,7 +424,7 @@ func show_model(path: String, preserve_camera := false, reset_paint := false, pa
 	holder.position = Vector3(-_model_origin.x, -bounds.position.y + 0.002, -_model_origin.y)
 	_vehicle_bounds = holder.transform * bounds
 	var materials := VehicleMaterials.new()
-	materials.apply(geometries, state, path, _vehicle_bounds, Color.from_string(paint_fallback, Color(0, 0, 0, 0)))
+	materials.apply(geometries, state, path, _vehicle_bounds, Color.from_string(paint_fallback, Color(0, 0, 0, 0)), tracked)
 	_painted_surfaces = materials.painted_surfaces
 	_vehicle_lamps = materials.vehicle_lamps
 	set_vehicle_lamps(_lamps_enabled)

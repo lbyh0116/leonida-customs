@@ -244,7 +244,7 @@
                         Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
                     <StackPanel x:Name="RenderPanel" Spacing="9">
                         <TextBlock Text="渲染" FontSize="17" FontWeight="SemiBold" />
-                        <ToggleSwitch x:Name="PathTracingSwitch" Header="路径追踪" Toggled="QualityChanged" />
+                        <ToggleSwitch x:Name="PathTracingSwitch" Header="路径追踪" IsEnabled="False" Toggled="QualityChanged" />
                         <ComboBox x:Name="PathQuality" Header="路径追踪画质" HorizontalAlignment="Stretch" SelectionChanged="QualityChanged">
                             <x:String>性能 · 1 样本/像素</x:String>
                             <x:String>平衡 · 2 样本/像素</x:String>

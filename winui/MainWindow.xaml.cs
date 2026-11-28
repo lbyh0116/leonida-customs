@@ -45,6 +45,7 @@ public sealed partial class MainWindow : Window
     private bool pathAvailable;
     private bool dlssAvailable;
     private bool rayReconstruction;
+    private string adapterVendor = "";
     private bool appearanceReady;
     private string? preferencePath;
     private Preferences preferences = new();
@@ -186,6 +187,7 @@ public sealed partial class MainWindow : Window
             pathAvailable = capabilities.GetProperty("path_tracing").GetBoolean();
             dlssAvailable = capabilities.GetProperty("dlss").GetBoolean();
             rayReconstruction = capabilities.GetProperty("ray_reconstruction").GetBoolean();
+            adapterVendor = capabilities.GetProperty("adapter_vendor").GetString() ?? "";
             PathTracingSwitch.IsEnabled = pathAvailable;
             populating = true;
             BuildLighting(hello.GetProperty("lighting"));
@@ -854,7 +856,9 @@ public sealed partial class MainWindow : Window
 
         aaMethods = methods;
         Antialias.ItemsSource = methods.Select(choice => choice.Label).ToArray();
-        Antialias.SelectedIndex = Math.Max(0, methods.FindIndex(choice => choice.Method == wanted));
+        Antialias.SelectedIndex = methods.FindIndex(choice => choice.Method == wanted);
+        if (Antialias.SelectedIndex < 0)
+            Antialias.SelectedIndex = methods.FindIndex(choice => choice.Method == AaMethod.Taa);
         PopulateAaTiers();
     }
 
@@ -983,9 +987,12 @@ public sealed partial class MainWindow : Window
         RayReconstruction.IsEnabled = path && rayReconstruction
             && aaMethods.ElementAtOrDefault(Antialias.SelectedIndex)?.Method == AaMethod.Dlss;
         Ssr.IsEnabled = Ao.IsEnabled = Ssil.IsEnabled = !path;
-        RayStatus.Text = !pathAvailable ? "当前运行时或 GPU 不支持路径追踪。" :
+        var pathStatus = !pathAvailable ? "当前运行时或 GPU 不支持路径追踪。" :
             path && aaMethods.ElementAtOrDefault(Antialias.SelectedIndex)?.Method == AaMethod.Msaa
                 ? "MSAA 只处理光栅几何，当前路径追踪画面不会使用它。" : "";
+        var dlssStatus = dlssAvailable ? "" : adapterVendor.Equals("AMD", StringComparison.OrdinalIgnoreCase)
+            ? "当前渲染显卡为 AMD，可选择 FSR 2.2。" : "当前渲染显卡或运行时不支持 NVIDIA DLSS。";
+        RayStatus.Text = $"{pathStatus} {dlssStatus}".Trim();
     }
 
     private async Task ApplyGraphicsAsync(bool save)
@@ -1022,7 +1029,7 @@ public sealed partial class MainWindow : Window
         {
             double scale = reply.GetProperty("scale").GetDouble();
             bool capped = reply.GetProperty("fps_limit").GetInt32() != 0;
-            string mode = actualPath ? (reconstruct ? "全路径追踪 · 光线重建" : "全路径追踪") : "纯光栅";
+            string mode = actualPath ? (reply.GetProperty("ray_reconstruction").GetBoolean() ? "全路径追踪 · 光线重建" : "全路径追踪") : "纯光栅";
             string methodLabel = method.Method is AaMethod.Dlss or AaMethod.Fsr2 or AaMethod.Msaa
                 ? $"{method.Label} · {tier.Label.Split('(', 2)[0].TrimEnd()}" : method.Label;
             if (reply.GetProperty("aa").GetInt32() != tier.EngineMode)
