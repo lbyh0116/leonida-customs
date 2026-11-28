@@ -1,6 +1,7 @@
 <Window x:Class="VehicleStudio.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="using:VehicleStudio">
     <Grid x:Name="Shell" UseLayoutRounding="True"
           Loaded="ShellLoaded" Padding="15" RowSpacing="12">
         <Grid.Resources>
@@ -170,14 +171,14 @@
                                        TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                             <Expander Header="车漆" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
                                 <StackPanel Spacing="8">
-                                    <ComboBox x:Name="PaintFinish" Header="车漆预览" HorizontalAlignment="Stretch"
+                                    <local:PartPicker x:Name="PaintFinish" Header="车漆预览" HorizontalAlignment="Stretch"
                                               SelectedIndex="0" IsEnabled="False">
                                         <x:String>原厂漆面</x:String>
                                         <x:String>亮光实色</x:String>
                                         <x:String>金属漆</x:String>
                                         <x:String>哑光</x:String>
                                         <x:String>珠光</x:String>
-                                    </ComboBox>
+                                    </local:PartPicker>
                                     <StackPanel Spacing="6">
                                         <TextBlock Text="自定义漆色" />
                                         <StackPanel Orientation="Horizontal" Spacing="7">
@@ -229,6 +230,14 @@
                         <ToggleSwitch x:Name="MicaSwitch" Header="云母背景（Mica）" Toggled="AppearanceChanged" />
                         <ToggleSwitch x:Name="LampSwitch" Header="车灯" Toggled="PreviewPreferenceChanged" />
                         <ToggleSwitch x:Name="GridLines" Header="地面网格" Toggled="PreviewPreferenceChanged" />
+                        <TextBox x:Name="GameDirectory" Header="游戏文件位置" PlaceholderText="包含 RPF 文件的文件夹"
+                                 KeyDown="GameDirectoryKeyDown" />
+                        <StackPanel Orientation="Horizontal" Spacing="7">
+                            <Button x:Name="BrowseGameDirectory" Content="选择文件夹" Click="OpenFolderClicked" />
+                            <Button x:Name="CheckGameDirectory" Content="校验并加载" Click="CheckGameDirectoryClicked" />
+                        </StackPanel>
+                        <TextBlock x:Name="GameSourceStatus" Text="检查 levels.rpf、packs.rpf 和 data.rpf"
+                                   TextWrapping="Wrap" FontSize="12" AutomationProperties.LiveSetting="Polite" />
                     </StackPanel>
                 </Border>
                 <Border Grid.Row="1" Grid.Column="1" Padding="15" CornerRadius="9" VerticalAlignment="Top"
@@ -246,6 +255,7 @@
                                   SelectionChanged="AaMethodChanged" />
                         <ComboBox x:Name="AaQuality" Header="抗锯齿与超分档位" HorizontalAlignment="Stretch"
                                   SelectionChanged="AaQualityChanged" />
+                        <CheckBox x:Name="RayReconstruction" Content="DLSS 光线重建" Click="QualityChanged" />
                         <TextBlock x:Name="RayStatus" TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         <CheckBox x:Name="Ssr" Content="反射 · SSR 与地板倒影" Click="QualityChanged" />
                         <CheckBox x:Name="Ao" Content="环境光遮蔽 SSAO" Click="QualityChanged" />
@@ -263,6 +273,12 @@
                         Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
                     <StackPanel Spacing="9">
                         <TextBlock Text="灯光与地面" FontSize="17" FontWeight="SemiBold" />
+                        <ComboBox x:Name="BackgroundPreset" Header="背景预设" HorizontalAlignment="Stretch"
+                                  SelectionChanged="BackgroundPresetChanged">
+                            <x:String>白色摄影棚</x:String>
+                            <x:String>黑色摄影棚</x:String>
+                            <x:String>自定义</x:String>
+                        </ComboBox>
                         <Button x:Name="FloorColorButton" HorizontalAlignment="Stretch">
                             <StackPanel Orientation="Horizontal" Spacing="7">
                                 <TextBlock x:Name="FloorColorLabel" Text="地面颜色" />

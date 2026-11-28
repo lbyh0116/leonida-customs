@@ -24,6 +24,8 @@ public sealed partial class MainWindow : Window
     private static readonly Regex ModelPattern = new("^[a-z0-9_]{1,80}$", RegexOptions.CultureInvariant);
     private static readonly Regex PartPattern = new("^[0-9a-f]{8}$", RegexOptions.CultureInvariant);
     private static readonly Regex ColorPattern = new("^#[0-9a-fA-F]{6}$", RegexOptions.CultureInvariant);
+    private const string DarkBackdrop = "#101116";
+    private const string DarkFloor = "#171A1F";
     private static readonly string[] Arguments = Environment.GetCommandLineArgs();
     private readonly bool safeMode = Arguments.Contains("--safe-mode");
     private readonly RendererClient renderer = new();
@@ -298,7 +300,11 @@ public sealed partial class MainWindow : Window
             picker.FileTypeFilter.Add("*");
             InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(this));
             if (await picker.PickSingleFolderAsync() is { } folder)
+            {
+                GameDirectory.Text = folder.Path;
+                GameSourceStatus.Text = "已选择文件夹，正在校验…";
                 await LoadGameAsync(folder.Path);
+            }
         }
         catch (Exception ex)
         {
@@ -306,11 +312,41 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private async void CheckGameDirectoryClicked(object sender, RoutedEventArgs args) =>
+        await LoadGameAsync(GameDirectory.Text);
+
+    private async void GameDirectoryKeyDown(object sender, KeyRoutedEventArgs args)
+    {
+        if (args.Key != VirtualKey.Enter)
+            return;
+        args.Handled = true;
+        await LoadGameAsync(GameDirectory.Text);
+    }
+
     private async Task LoadGameAsync(string path)
     {
+        if (!connected || busy)
+            return;
+        path = path.Trim();
+        GameDirectory.Text = path;
+        if (path.Length == 0)
+        {
+            GameSourceStatus.Text = "请先选择或输入游戏文件夹。";
+            return;
+        }
+
         await RunAssetActionAsync("正在检查游戏目录…", async () =>
         {
-            var response = await renderer.RequestAsync("load", new { path });
+            GameSourceStatus.Text = "正在校验档案并读取载具目录…";
+            JsonElement response;
+            try { response = await renderer.RequestAsync("load", new { path }); }
+            catch (Exception ex) when (ex is IOException or InvalidOperationException)
+            {
+                GameSourceStatus.Text = ex.Message;
+                throw;
+            }
+            GameDirectory.Text = response.GetProperty("game").GetString() ?? path;
+            GameSourceStatus.Text = "三个档案均通过校验，载具目录已载入。";
             vehicles = response.GetProperty("vehicles").Deserialize<List<Vehicle>>(JsonOptions) ?? [];
             selected = null;
             displayed = null;
@@ -493,7 +529,7 @@ public sealed partial class MainWindow : Window
         {
             var slot = PartLabels.Slot(group.First().SlotName, group.Key);
             PartsPanel.Children.Add(new TextBlock { Text = slot, FontSize = 12 });
-            var combo = new ComboBox { HorizontalAlignment = HorizontalAlignment.Stretch };
+            var combo = new PartPicker { HorizontalAlignment = HorizontalAlignment.Stretch };
             var options = group.Select((part, index) => (Part: part, Title: PartLabels.Option(slot, part.Label, index + 1))).ToArray();
             var stock = options.FirstOrDefault(option => option.Part.StockConfigs?.Contains(config) == true);
             var stockItem = new ComboBoxItem { Content = stock.Part is null ? "沿用原厂配置" : $"原厂 · {stock.Title}", Tag = "" };
@@ -850,6 +886,7 @@ public sealed partial class MainWindow : Window
         Ssil.IsChecked = options.IndirectLight;
         Bloom.IsChecked = options.Bloom;
         UncapPreview.IsChecked = options.UncapPreview;
+        RayReconstruction.IsChecked = options.Reconstruct;
         PopulateAaMethods(Enum.IsDefined(method) ? method : AaMethod.Taa);
     }
 
@@ -901,6 +938,8 @@ public sealed partial class MainWindow : Window
     {
         bool path = PathSelected;
         PathQuality.IsEnabled = path;
+        RayReconstruction.IsEnabled = path && rayReconstruction
+            && aaMethods.ElementAtOrDefault(Antialias.SelectedIndex)?.Method == AaMethod.Dlss;
         Ssr.IsEnabled = Ao.IsEnabled = Ssil.IsEnabled = !path;
         RayStatus.Text = !pathAvailable ? "当前运行时或 GPU 不支持路径追踪。" :
             path && aaMethods.ElementAtOrDefault(Antialias.SelectedIndex)?.Method == AaMethod.Msaa
@@ -914,12 +953,13 @@ public sealed partial class MainWindow : Window
         bool path = PathSelected;
         var method = aaMethods[Antialias.SelectedIndex];
         var tier = aaTiers[AaQuality.SelectedIndex];
-        bool reconstruct = path && tier.EngineMode == 8 && rayReconstruction;
+        bool reconstruct = path && tier.EngineMode == 8 && rayReconstruction && RayReconstruction.IsChecked == true;
         var settings = new GraphicsPreferences(Path: path, PathQuality: PathQuality.SelectedIndex,
             Reflections: Ssr.IsChecked == true, Occlusion: Ao.IsChecked == true,
             IndirectLight: Ssil.IsChecked == true, Bloom: Bloom.IsChecked == true,
             Tiers: selectedTiers.Select(tier => new SavedTier(path, tier.Key, tier.Value)).ToArray(),
-            UncapPreview: UncapPreview.IsChecked == true, AntialiasMethod: method.Method);
+            UncapPreview: UncapPreview.IsChecked == true, AntialiasMethod: method.Method,
+            Reconstruct: RayReconstruction.IsChecked == true);
         var reply = await renderer.RequestAsync("quality", new
         {
             aa = tier.EngineMode, scale = tier.Scale,
@@ -969,7 +1009,10 @@ public sealed partial class MainWindow : Window
         AddLightColor("主光色", "light_color");
         AddLightColor("背景色", "background_color");
         var savedColor = preferences.FloorColor;
-        SetFloorPicker(savedColor is not null && ColorPattern.IsMatch(savedColor) ? savedColor : (string)lightDefaults["floor_color"]);
+        SetFloorPicker(ParseHexColor(savedColor) is not null ? savedColor : (string)lightDefaults["floor_color"]);
+        if (ParseHexColor(preferences.BackgroundColor) is not null)
+            lighting["background_color"] = lightColors["background_color"].Text = preferences.BackgroundColor;
+        SyncBackgroundPreset();
     }
 
     private static Windows.UI.Color? ParseHexColor(string? text)
@@ -1035,8 +1078,36 @@ public sealed partial class MainWindow : Window
         lighting["floor_color"] = hex;
         ShowFloorColor(color);
         preferences = preferences with { FloorColor = hex };
+        SyncBackgroundPreset();
         SavePreferences();
         await PostAsync("lighting", lighting);
+    }
+
+    private async void BackgroundPresetChanged(object sender, SelectionChangedEventArgs args)
+    {
+        if (!connected || populating || BackgroundPreset.SelectedIndex is not (0 or 1))
+            return;
+        bool dark = BackgroundPreset.SelectedIndex == 1;
+        string backdrop = dark ? DarkBackdrop : (string)lightDefaults["background_color"];
+        string floor = dark ? DarkFloor : (string)lightDefaults["floor_color"];
+        populating = true;
+        lighting["background_color"] = lightColors["background_color"].Text = backdrop;
+        SetFloorPicker(floor);
+        populating = false;
+        preferences = preferences with { FloorColor = floor, BackgroundColor = backdrop };
+        SavePreferences();
+        await PostAsync("lighting", lighting);
+    }
+
+    private void SyncBackgroundPreset()
+    {
+        bool Matches(string key, string hex) => string.Equals((string)lighting[key], hex, StringComparison.OrdinalIgnoreCase);
+        bool wasPopulating = populating;
+        populating = true;
+        BackgroundPreset.SelectedIndex =
+            Matches("background_color", (string)lightDefaults["background_color"]) && Matches("floor_color", (string)lightDefaults["floor_color"]) ? 0 :
+            Matches("background_color", DarkBackdrop) && Matches("floor_color", DarkFloor) ? 1 : 2;
+        populating = wasPopulating;
     }
 
     private void AddLightSlider(string title, string key, double min, double max, double step)
@@ -1068,6 +1139,12 @@ public sealed partial class MainWindow : Window
                 return;
             }
             lighting[key] = color.Text.Trim();
+            if (key == "background_color")
+            {
+                preferences = preferences with { BackgroundColor = (string)lighting[key] };
+                SyncBackgroundPreset();
+                SavePreferences();
+            }
             await PostAsync("lighting", lighting);
         };
         lightColors[key] = color;
@@ -1092,7 +1169,8 @@ public sealed partial class MainWindow : Window
             lighting[key] = value;
         }
         populating = false;
-        preferences = preferences with { FloorColor = "" };
+        preferences = preferences with { FloorColor = "", BackgroundColor = "" };
+        SyncBackgroundPreset();
         SavePreferences();
         await PostAsync("lighting", lighting);
     }
@@ -1237,7 +1315,8 @@ public sealed partial class MainWindow : Window
 
     private void UpdateAssetControls()
     {
-        OpenFolder.IsEnabled = connected && !busy;
+        OpenFolder.IsEnabled = BrowseGameDirectory.IsEnabled = CheckGameDirectory.IsEnabled = connected && !busy;
+        GameDirectory.IsEnabled = connected && !busy;
         VehicleList.IsEnabled = connected && !busy;
         Factory.IsEnabled = !busy && selected?.Configurations.Count > 0;
         PaintFinish.IsEnabled = connected && !busy && paintable;
@@ -1281,10 +1360,10 @@ public sealed partial class MainWindow : Window
     private sealed record AaChoice(AaMethod Method, string Label);
     private sealed record AaTier(string Label, int EngineMode, double Scale);
     private sealed record Preferences(int Theme = 0, bool Mica = true, bool Lamps = true, bool Grid = false,
-        string FloorColor = "", GraphicsPreferences? Graphics = null);
+        string FloorColor = "", GraphicsPreferences? Graphics = null, string BackgroundColor = "");
     private sealed record GraphicsPreferences(bool Path = false, int PathQuality = 2,
         AaMethod RasterAa = AaMethod.Taa, AaMethod PathAa = AaMethod.Dlss, bool Reflections = true,
         bool Occlusion = true, bool IndirectLight = true, bool Bloom = true, SavedTier[]? Tiers = null,
-        bool UncapPreview = false, AaMethod? AntialiasMethod = null);
+        bool UncapPreview = false, AaMethod? AntialiasMethod = null, bool Reconstruct = true);
     private sealed record SavedTier(bool Path, AaMethod Method, int Index);
 }

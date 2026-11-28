@@ -13,6 +13,7 @@ var _stage: SubViewportContainer
 var _token := ""
 var _connected := false
 var _busy := false
+var _preview_model := ""
 var _frame_elapsed := 0.0
 var _fps_limit := DEFAULT_PREVIEW_FPS
 var _frame_credit := false
@@ -214,16 +215,19 @@ func _run_asset_command(command: String, data: Dictionary) -> Dictionary:
 			if not loaded.get("ok", false):
 				return loaded
 			_stage.clear_model()
+			_preview_model = ""
 			return {"ok": true, "game": _source.game, "vehicles": _source.vehicles.values(), "unnamed": _source.unnamed}
 		"parts":
 			return await _source.list_parts(str(data.model))
 		"preview":
-			var result: Dictionary = await _source.preview(str(data.model), int(data.config), data.parts)
+			var model := str(data.model)
+			var result: Dictionary = await _source.preview(model, int(data.config), data.parts)
 			if not result.get("ok", false):
 				return result
-			var asset: Dictionary = _stage.show_model(result.path)
+			var asset: Dictionary = _stage.show_model(result.path, model == _preview_model)
 			if asset.has("error"):
 				return {"ok": false, "error": asset.error}
+			_preview_model = model
 			_prepare_path_frame()
 			var size: Vector3 = asset.size
 			return {

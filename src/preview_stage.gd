@@ -7,6 +7,11 @@ const VehicleMaterials := preload("res://src/vehicle_materials.gd")
 const PANEL_SIZE := Vector2(5.5, 7.2)
 const PANEL_HEIGHT := 3.35
 const CAMERA_MIN_HEIGHT := 0.10
+const CAMERA_MAX_HEIGHT := 27.0
+const CAMERA_MAX_RADIUS := 45.0
+const STUDIO_FLAT_RADIUS := 57.0
+const STUDIO_BEND_RADIUS := 7.0
+const STUDIO_HEIGHT := 48.0
 
 var stage: Node3D
 var viewport: SubViewport
@@ -41,6 +46,7 @@ var _lighting := {
 }
 var camera: Camera3D
 var model: Node3D
+var _model_origin := Vector2.ZERO
 var spinning := false
 var _target := Vector3.ZERO
 var _center := Vector3.ZERO
@@ -239,11 +245,15 @@ func set_render_mode(enabled: bool, samples: int, denoise: bool) -> bool:
 
 
 func _make_cyclorama() -> ArrayMesh:
-	var profile := PackedVector3Array([Vector3.ZERO, Vector3(10, 0, 0)])
+	var profile := PackedVector3Array([Vector3.ZERO, Vector3(STUDIO_FLAT_RADIUS, 0, 0)])
 	for step in range(1, 13):
 		var bend := PI * 0.5 * step / 12.0
-		profile.append(Vector3(10.0 + 4.0 * sin(bend), 4.0 * (1.0 - cos(bend)), bend))
-	profile.append(Vector3(14, 15, PI * 0.5))
+		profile.append(Vector3(STUDIO_FLAT_RADIUS + STUDIO_BEND_RADIUS * sin(bend),
+			STUDIO_BEND_RADIUS * (1.0 - cos(bend)), bend))
+	var wall_radius := STUDIO_FLAT_RADIUS + STUDIO_BEND_RADIUS
+	profile.append(Vector3(wall_radius, STUDIO_HEIGHT, PI * 0.5))
+	profile.append(Vector3(wall_radius, STUDIO_HEIGHT, PI))
+	profile.append(Vector3(0, STUDIO_HEIGHT, PI))
 	var vertices := PackedVector3Array()
 	var normals := PackedVector3Array()
 	var indices := PackedInt32Array()
@@ -255,12 +265,17 @@ func _make_cyclorama() -> ArrayMesh:
 			vertices.append(direction * row.x + Vector3.UP * row.y)
 			normals.append(Vector3.UP * cos(row.z) - direction * sin(row.z))
 	for row in range(profile.size() - 1):
+		if row == profile.size() - 3:
+			continue # Duplicate ring keeps the ceiling normal separate from the wall.
 		for column in range(SEGMENTS):
 			var left := row * SEGMENTS + column
 			var right := row * SEGMENTS + (column + 1) % SEGMENTS
-			if row > 0:
+			if row > 0 and row < profile.size() - 2:
 				indices.append_array(PackedInt32Array([left, right + SEGMENTS, right]))
-			indices.append_array(PackedInt32Array([left, left + SEGMENTS, right + SEGMENTS]))
+			if row == profile.size() - 2:
+				indices.append_array(PackedInt32Array([left, left + SEGMENTS, right]))
+			else:
+				indices.append_array(PackedInt32Array([left, left + SEGMENTS, right + SEGMENTS]))
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = vertices
@@ -360,7 +375,7 @@ func _update_tire_contacts(geometries: Array[Node]) -> void:
 	_floor_parameter("tire_count", count)
 
 
-func show_model(path: String) -> Dictionary:
+func show_model(path: String, preserve_camera := false) -> Dictionary:
 	var gltf := GLTFDocument.new()
 	var state := GLTFState.new()
 	var error := gltf.append_from_file(path, state)
@@ -388,7 +403,10 @@ func show_model(path: String) -> Dictionary:
 		holder.free()
 		return {"error": "车辆的网格边界无效。"}
 	var center := bounds.get_center()
-	holder.position = Vector3(-center.x, -bounds.position.y + 0.002, -center.z)
+	preserve_camera = preserve_camera and model != null
+	if not preserve_camera:
+		_model_origin = Vector2(center.x, center.z)
+	holder.position = Vector3(-_model_origin.x, -bounds.position.y + 0.002, -_model_origin.y)
 	var materials := VehicleMaterials.new()
 	materials.apply(geometries, state, path, holder.transform * bounds)
 	_painted_surfaces = materials.painted_surfaces
@@ -396,14 +414,14 @@ func show_model(path: String) -> Dictionary:
 	set_vehicle_lamps(_lamps_enabled)
 	set_paint(_paint_finish, _paint_color)
 	_update_tire_contacts(geometries)
-	var first_or_different := model == null or not is_equal_approx(_radius, bounds.size.length() / 2.0)
 	if model != null:
+		stage.remove_child(model)
 		model.queue_free()
 	model = holder
 	_center = Vector3(0, bounds.size.y * 0.40, 0)
 	_radius = maxf(0.25, bounds.size.length() / 2.0)
 	_key.directional_shadow_max_distance = maxf(22.0, _radius * 5.0)
-	if first_or_different:
+	if not preserve_camera:
 		reset_camera()
 	return {"meshes": geometries.size(), "size": bounds.size, "paintable": not _painted_surfaces.is_empty()}
 
@@ -486,7 +504,6 @@ func _gui_input(event: InputEvent) -> void:
 			return
 		else:
 			return
-		_distance = clampf(_distance, _radius * 1.1, _radius * 12.0)
 	else:
 		return
 	_move_camera()
@@ -496,15 +513,22 @@ func _gui_input(event: InputEvent) -> void:
 func _move_camera() -> void:
 	if not is_instance_valid(camera) or _free_view:
 		return
-	_target.y = maxf(_target.y, CAMERA_MIN_HEIGHT)
-	var distance := _distance * _aspect_framing()
+	_target = _bound_camera_point(_target, CAMERA_MAX_RADIUS - 3.0, CAMERA_MAX_HEIGHT - 2.0)
+	var framing := _aspect_framing()
+	var max_distance := minf(_radius * 7.0, CAMERA_MAX_RADIUS / framing)
+	_distance = clampf(_distance, minf(_radius * 1.1, max_distance), max_distance)
+	var distance := _distance * framing
 	var floor_pitch := asin(clampf((CAMERA_MIN_HEIGHT - _target.y) / distance, -1.0, 1.0))
-	var pitch := maxf(_pitch, floor_pitch)
+	var ceiling_pitch := asin(clampf((CAMERA_MAX_HEIGHT - _target.y) / distance, -1.0, 1.0))
+	var pitch := clampf(_pitch, floor_pitch, ceiling_pitch)
 	var direction := Vector3(sin(_yaw) * cos(pitch), sin(pitch), cos(_yaw) * cos(pitch))
-	var position := _target + direction * distance
-	position.y = maxf(position.y, CAMERA_MIN_HEIGHT)
-	camera.position = position
+	camera.position = _bound_camera_point(_target + direction * distance, CAMERA_MAX_RADIUS, CAMERA_MAX_HEIGHT)
 	camera.look_at(_target, Vector3.UP)
+
+
+func _bound_camera_point(point: Vector3, radius: float, top: float) -> Vector3:
+	var horizontal := Vector2(point.x, point.z).limit_length(radius)
+	return Vector3(horizontal.x, clampf(point.y, CAMERA_MIN_HEIGHT, top), horizontal.y)
 
 
 func set_free_view(active: bool) -> void:
@@ -542,8 +566,7 @@ func _move_free_camera(delta: float) -> void:
 	if move.length_squared() > 0.0:
 		var boost := 3.0 if _key_held(KEY_SHIFT) else 1.0
 		var position := camera.position + move.normalized() * _fly_speed * boost * delta
-		position.y = maxf(position.y, CAMERA_MIN_HEIGHT)
-		camera.position = position
+		camera.position = _bound_camera_point(position, CAMERA_MAX_RADIUS, CAMERA_MAX_HEIGHT)
 
 
 func _input(event: InputEvent) -> void:

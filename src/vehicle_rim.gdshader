@@ -25,7 +25,7 @@ void fragment() {
 	// The recessed barrel has a smaller unobstructed view of the studio
 	// lights than the spoke faces. Keep the material's tint on both.
 	float outer_face = polished ? 1.0 - smoothstep(0.17, 0.52, depth_ratio) : 0.0;
-	float aperture = mix(1.0, 0.085, smoothstep(0.16, 0.68, depth_ratio));
+	float aperture = mix(1.0, 0.18, smoothstep(0.16, 0.68, depth_ratio));
 	float texture_visibility = texture(occlusion_map, UV).b;
 	float rim_visibility = aperture * mix(texture_visibility, max(0.76, texture_visibility), outer_face);
 	float finish = round(COLOR.a * 255.0);

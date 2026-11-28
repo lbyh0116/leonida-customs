@@ -193,8 +193,7 @@ static func _rim_material(original: BaseMaterial3D, occlusion: Texture2D, extent
 	return material
 
 
-# With a missing disc or drum, the floor can be visible straight through
-# the rim. A recessed, matte backing represents the closed wheel cavity.
+# Use a neutral rotor and hub when the export omits the brake assembly.
 static func _add_missing_wheel_backing(node: MeshInstance3D, extent: AABB, midline: float) -> void:
 	var center := extent.get_center()
 	var radius := minf(extent.size.y, extent.size.z) * 0.5
@@ -202,21 +201,29 @@ static func _add_missing_wheel_backing(node: MeshInstance3D, extent: AABB, midli
 		return
 	var outwards := 1.0 if center.x > midline else -1.0
 	var outer := extent.end.x if outwards > 0.0 else extent.position.x
-	center.x = outer - outwards * extent.size.x * 0.64
+	center.x = outer - outwards * extent.size.x * 0.50
+	var axle := Transform3D(Basis(Vector3.FORWARD, PI * 0.5), center)
+	var rotor := _add_brake_surface(node, axle, radius * 0.75, 0.022, Color("#6b6c6e"), 0.70)
+	rotor.name = "PreviewBrakeRotor"
+	axle.origin.x += outwards * 0.016
+	var hub := _add_brake_surface(node, axle, radius * 0.31, 0.030, Color("#33363a"), 0.38)
+	hub.name = "PreviewBrakeHub"
 
-	var backing_mesh := CylinderMesh.new()
-	backing_mesh.top_radius = radius * 0.94
-	backing_mesh.bottom_radius = backing_mesh.top_radius
-	backing_mesh.height = 0.012
-	backing_mesh.radial_segments = 32
-	backing_mesh.rings = 0
-	var backing_material := StandardMaterial3D.new()
-	backing_material.albedo_color = Color("#101014")
-	backing_material.roughness = 0.95
-	backing_material.metallic_specular = 0.1
-	var backing := MeshInstance3D.new()
-	backing.name = "WheelCavityBacking"
-	backing.mesh = backing_mesh
-	backing.material_override = backing_material
-	node.add_child(backing)
-	backing.global_transform = Transform3D(Basis(Vector3.FORWARD, PI * 0.5), center)
+
+static func _add_brake_surface(node: MeshInstance3D, pose: Transform3D, radius: float, thickness: float, color: Color, metallic: float) -> MeshInstance3D:
+	var mesh := CylinderMesh.new()
+	mesh.top_radius = radius
+	mesh.bottom_radius = radius
+	mesh.height = thickness
+	mesh.radial_segments = 48
+	mesh.rings = 0
+	var material := StandardMaterial3D.new()
+	material.albedo_color = color
+	material.roughness = 0.46
+	material.metallic = metallic
+	var surface := MeshInstance3D.new()
+	surface.mesh = mesh
+	surface.material_override = material
+	node.add_child(surface)
+	surface.global_transform = pose
+	return surface

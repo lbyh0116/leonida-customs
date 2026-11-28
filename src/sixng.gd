@@ -19,6 +19,7 @@ var vehicles: Dictionary = {}
 var unnamed := 0
 var _parts: Dictionary = {}
 var _stock: Dictionary = {}
+var _wheel_record: Dictionary = {}
 var _pid := 0
 
 
@@ -51,17 +52,34 @@ func load_source(path: String) -> Dictionary:
 		return _error("请选择本机磁盘上的游戏目录。")
 	var archive_fields: Array = []
 	var last_modified := 0
+	var missing := PackedStringArray()
+	var unreadable := PackedStringArray()
+	var invalid := PackedStringArray()
 	for name in REQUIRED:
 		var archive := normalized.path_join(name)
+		if not FileAccess.file_exists(archive):
+			missing.append(name)
+			continue
 		var file := FileAccess.open(archive, FileAccess.READ)
 		if file == null:
-			return _error("找不到 %s。请选择含 levels.rpf、packs.rpf 和 data.rpf 的游戏目录。" % name)
+			unreadable.append(name)
+			continue
 		var header := file.get_buffer(24)
 		var modified := FileAccess.get_modified_time(archive)
 		if header.size() != 24 or header.slice(0, 4).get_string_from_ascii() != "9FPR":
-			return _error("%s 的档案头与 Xbox RPF9 格式不同。" % name)
+			invalid.append(name)
+			continue
 		archive_fields.append([name, file.get_length(), modified, header.hex_encode()])
 		last_modified = maxi(last_modified, modified)
+	var problems := PackedStringArray()
+	if not missing.is_empty():
+		problems.append("缺少 " + "、".join(missing))
+	if not unreadable.is_empty():
+		problems.append("无法读取 " + "、".join(unreadable))
+	if not invalid.is_empty():
+		problems.append("Xbox RPF9 档案头不匹配 " + "、".join(invalid))
+	if not problems.is_empty():
+		return _error("；".join(problems) + "。")
 	if not FileAccess.file_exists(decoder):
 		return _error("找不到 SixNG。请在项目目录运行 tools/install-sixng.ps1。")
 	var id := normalized.replace("/", "\\").to_lower().sha256_text().left(24)
@@ -154,6 +172,7 @@ func load_source(path: String) -> Dictionary:
 	unnamed = unresolved
 	_parts.clear()
 	_stock = stock
+	_wheel_record = {}
 	return {"ok": true}
 
 
@@ -182,7 +201,7 @@ func list_parts(model: String) -> Dictionary:
 				stock_configs.append(index)
 		available.append({
 			"id": part.part, "slot": part.slot, "slot_name": part.slot_name,
-			"label": " · ".join(names), "stockConfigs": stock_configs
+			"label": " · ".join(names), "stockConfigs": stock_configs, "models": names
 		})
 	_parts[model] = available
 	return {"ok": true, "parts": available}
@@ -196,23 +215,36 @@ func preview(model: String, config: int, selection: Array) -> Dictionary:
 		return await _preview_base(model)
 	if config < 0 or config >= cfgs.size():
 		return _error("该车型没有这个原厂配置。")
+	var wheel_choices: Dictionary = {}
+	var regular_picks: Array = []
+	var wheel_warnings: Array[String] = []
 	if not selection.is_empty():
 		var parts := await list_parts(model)
 		if not parts.get("ok", false):
 			return parts
 		var slots: Dictionary = {}
 		for id: Variant in selection:
-			var slot := ""
+			var option: Dictionary = {}
 			for part: Dictionary in parts.parts:
 				if part.id == id:
-					slot = part.slot
+					option = part
 					break
-			if slot.is_empty() or slots.has(slot):
+			if option.is_empty() or slots.has(option.slot):
 				return _error("配件不可用，或多个配件占用了同一安装位置。")
-			slots[slot] = true
+			slots[option.slot] = true
+			var wheel_model := _wheel_model(option)
+			if wheel_model.is_empty():
+				regular_picks.append(id)
+			elif option.slot_name in ["rims_front", "rims_rear", "tyres_rear"]:
+				if not option.stockConfigs.has(config):
+					wheel_warnings.append("当前解码器无法单独预览这个车轴的 %s，该选项未应用。" % wheel_model)
+			else:
+				wheel_choices["rim_" if wheel_model.begins_with("rim_") else "tyre_"] = wheel_model
 	var picks := selection.duplicate()
 	picks.sort()
-	var key := JSON.stringify([stamp, "warnings-v1", model, config, picks]).sha256_text().left(24)
+	regular_picks.sort()
+	var cache_version := "warnings-v1" if wheel_choices.is_empty() and wheel_warnings.is_empty() else "wheels-v1"
+	var key := JSON.stringify([stamp, cache_version, model, config, picks]).sha256_text().left(24)
 	var folder := source_dir.path_join("models").path_join(key)
 	var path := folder.path_join("vehicle.glb")
 	var info_path := folder.path_join("preview.json")
@@ -223,15 +255,21 @@ func preview(model: String, config: int, selection: Array) -> Dictionary:
 		return _error("无法创建预览缓存目录。")
 	var building := folder.path_join("vehicle-%s.glb" % OS.get_process_id())
 	var args := ["vehicle", model, "--config", str(config), "--data", _catalog(), "--out", building, "--tex", "png"]
-	if not picks.is_empty():
-		args.append_array(["--with", ",".join(picks)])
-	var result := await _run(game, source_dir, args)
+	if not regular_picks.is_empty():
+		args.append_array(["--with", ",".join(regular_picks)])
+	var result: Dictionary
+	if not wheel_choices.is_empty():
+		result = await _export_wheels(model, config, wheel_choices, building, regular_picks)
+		if not result.get("ok", false):
+			wheel_warnings.append("无法装配完整轮组，已保留选定原厂配置的轮毂和轮胎。")
+	if result.is_empty() or not result.get("ok", false):
+		result = await _run(game, source_dir, args)
 	if not result.get("ok", false):
 		return result
 	if DirAccess.rename_absolute(building, path) != OK:
 		return _error("无法保存整车 GLB 缓存。")
 	var exported: Dictionary = result.get("result", {})
-	var requested_warnings: Array[String] = []
+	var requested_warnings := wheel_warnings
 	for field in ["not_fitted", "left_out"]:
 		for warning: Variant in exported.get(field, []):
 			if not warning is String:
@@ -248,6 +286,100 @@ func preview(model: String, config: int, selection: Array) -> Dictionary:
 	}
 	_write_dictionary(info_path, metadata)
 	return {"ok": true, "path": path, "asset": metadata}
+
+
+func _wheel_model(option: Dictionary) -> String:
+	var prefix := ""
+	match option.slot_name:
+		"rims", "rims_front", "rims_rear": prefix = "rim_"
+		"tyres", "tyres_rear": prefix = "tyre_"
+	for name: String in option.models:
+		if not prefix.is_empty() and name.begins_with(prefix):
+			return name
+	return ""
+
+
+func _export_wheels(model: String, config: int, choices: Dictionary, output: String, other_picks: Array) -> Dictionary:
+	if _wheel_record.get("model") != model:
+		# The generated catalog can exceed 100 MB. Keep only the active record and read it off the render thread.
+		var reader := Thread.new()
+		if reader.start(_find_catalog_vehicle.bind(_catalog(), model)) != OK:
+			return {}
+		while reader.is_alive():
+			await get_tree().process_frame
+		_wheel_record = reader.wait_to_finish()
+	if _wheel_record.is_empty():
+		return {}
+	var record := _wheel_record.duplicate()
+	var configs: Array = record.configurations.duplicate()
+	var updated: Dictionary = configs[config].duplicate()
+	var original: Array = updated.parts
+	var fitted: Array = original.duplicate()
+	var expected := {}
+	# SixNG assembles wheels by model name. Keep the counterpart from the current configuration.
+	for prefix in ["rim_", "tyre_"]:
+		var stock_name := _named_wheel_part(original, prefix)
+		var chosen := str(choices.get(prefix, stock_name))
+		if chosen.is_empty():
+			# Some stock configurations have no named counterpart. Prefer the same vehicle's nearest configuration.
+			var axle_part := _named_wheel_part(original, "tyre_" if prefix == "rim_" else "rim_")
+			for candidate: Dictionary in configs:
+				var name := _named_wheel_part(candidate.parts, prefix)
+				if name.is_empty():
+					continue
+				if chosen.is_empty():
+					chosen = name
+				if not axle_part.is_empty() and candidate.parts.has(axle_part):
+					chosen = name
+					break
+		if chosen.is_empty():
+			continue
+		if chosen != stock_name:
+			fitted = fitted.filter(func(part: String) -> bool: return not part.begins_with(prefix))
+			fitted.push_front(chosen)
+		expected[prefix] = chosen
+	updated["parts"] = fitted
+	configs[config] = updated
+	record["configurations"] = configs
+	var catalog := output.get_basename() + "-input.json"
+	_write_dictionary(catalog, {"vehicles": [record]})
+	var args := ["vehicle", model, "--config", str(config), "--data", catalog, "--out", output, "--tex", "png"]
+	if not other_picks.is_empty():
+		args.append_array(["--with", ",".join(other_picks)])
+	var result := await _run(game, source_dir, args)
+	DirAccess.remove_absolute(catalog)
+	if not result.get("ok", false):
+		return result
+	var wheel_positions := {}
+	for piece: Dictionary in result.result.get("pieces", []):
+		var name := str(piece.get("name", "")).split("@", false, 1)
+		if piece.get("as") != "wheel" or piece.get("triangles", 0) <= 0 or name.size() != 2:
+			continue
+		if not wheel_positions.has(name[1]):
+			wheel_positions[name[1]] = {}
+		wheel_positions[name[1]][name[0].trim_suffix("_hi")] = true
+	if wheel_positions.is_empty() or wheel_positions.size() != int(result.result.wheels.get("wheels", 0)):
+		return {}
+	for installed: Dictionary in wheel_positions.values():
+		for name: String in expected.values():
+			if not installed.has(name):
+				return {}
+	return result
+
+
+static func _named_wheel_part(parts: Array, prefix: String) -> String:
+	for part: String in parts:
+		if part.begins_with(prefix):
+			return part
+	return ""
+
+
+static func _find_catalog_vehicle(path: String, model: String) -> Dictionary:
+	var catalog := _read_dictionary(path)
+	for record: Dictionary in catalog.get("vehicles", []):
+		if record.get("model") == model:
+			return record
+	return {}
 
 
 func _preview_base(model: String) -> Dictionary:
