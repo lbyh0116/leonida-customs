@@ -1,94 +1,130 @@
 <div align="center">
-  <img src="winui/Assets/leonida-mark.png" alt="Leonida Customs 标志" width="100">
-  <h1>Leonida Customs</h1>
-  <p>GTA VI 离线载具预览与改装工作室 · Windows x64</p>
+
+<img src="docs/social-preview.png" alt="Leonida Customs — offline GTA VI vehicle studio" width="840">
+
+**GTA VI 离线载具预览与改装工作室**
+
+**Offline vehicle preview and customization for GTA VI**
+
+[简体中文](#简体中文) · [English](#english)
+
+[下载 Windows x64 / Download](https://github.com/lbyh0116/leonida-customs/releases/latest) · [开发构建 / CI builds](https://github.com/lbyh0116/leonida-customs/actions/workflows/windows.yml) · [问题反馈 / Issues](https://github.com/lbyh0116/leonida-customs/issues) · [GPL-3.0-only](LICENSE)
+
 </div>
 
-Leonida Customs 用玩家自己提供的 Xbox 版资源组装并渲染载具。可按类别找车、查看图鉴性能、预览车漆与配件，以及用改车码分享配置。软件无需启动游戏，安装包和源码均不包含游戏资源。
+---
 
-- [下载发布版](https://github.com/lbyh0116/leonida-customs/releases) · [下载开发构建](https://github.com/lbyh0116/leonida-customs/actions/workflows/windows.yml) · [反馈问题](https://github.com/lbyh0116/leonida-customs/issues/new/choose)
+## 简体中文
 
-## 快速开始
+Leonida Customs 用你提供的 Xbox 版游戏资源，在独立摄影棚里预览载具、试装配件和调整车漆。软件只读访问本地资源，无需启动游戏。源码与安装包均不含游戏资源。
 
-1. Windows 10 2004（内部版本 19041）或更高版本需要支持 Vulkan 的显卡与驱动。云母背景需要 Windows 11。
-2. 完整解压 Windows x64 ZIP，再双击 `Start-Viewer.cmd`。首次启动需联网下载并校验 Godot 和 SixNG，之后可离线使用。开发构建位于 GitHub Actions 成功运行的 **Artifacts** 区域，下载需要登录 GitHub。
-3. 点「打开游戏目录」，或在「设置 → 游戏文件位置」输入目录后点「校验并加载」。目录需包含 `levels.rpf`、`packs.rpf` 和 `data.rpf`。已经验证 Xbox Series 1.0.2.1。首次扫描需数分钟，之后会复用索引。
+### 快速开始
 
-软件以只读方式访问原始游戏资源。索引、预览缓存、设置和日志均保存在软件目录下的 `work`。可以将整个软件放在空间充足的磁盘上。也可指定启动目录，例如 `Start-Viewer.cmd "--game=G:\你的游戏目录"`。
+1. 确认系统为 Windows 10 2004（19041）或更高版本，显卡与驱动支持 Vulkan。云母背景需要 Windows 11。
+2. 下载 Windows x64 ZIP、完整解压，然后运行 `Start-Viewer.cmd`。首次运行联网下载并校验 Godot 与 SixNG，后续可离线运行。
+3. 点「打开游戏目录」，或在「设置 → 游戏文件位置」校验包含 `levels.rpf`、`packs.rpf` 和 `data.rpf` 的目录。已验证 Xbox Series 1.0.2.1。首次扫描可能需要几分钟，之后复用索引。
+4. 在「设置 → 界面语言」选择简体中文或 English，然后点击「应用语言」。
 
-在「设置 → 界面语言」可切换简体中文和 English。点击「应用语言」后会重新打开窗口。 To use English, select it in **Settings → Display language** and choose **Apply language**.
+索引、预览缓存、设置与日志放在软件目录下的 `work`。可以把整个软件目录放在空间充足的磁盘上，也可以通过 `Start-Viewer.cmd "--game=G:\你的游戏目录"` 指定资源位置。
 
-## 在车库里做什么
+### 车库与摄影棚
 
 | 功能 | 用法 |
 | --- | --- |
-| 找车 | 按简中名、英文名、厂牌或模型 ID 搜索。选车后自动显示同类别车辆。分类优先使用游戏图鉴，再按车型和档案类型补齐。 |
-| 看车辆数据 | 显示档案里的驱动方式、挡位、质量，以及图鉴中的速度、加速、两项操控和强度。缺失的评分显示「—」。 |
-| 预览改装 | 选原厂配置后自动列出中文配件。没有可用名称的零件按槽位编号，悬停可看原始模型 ID。按槽位选件后会自动应用，组装期间在视口提示加载，重新载入同一辆车时保留视角。同一区域可以实时预览亮光实色、金属漆、哑光或珠光。 |
-| 分享配置 | 「复制改车码」记录当前车型、配置和配件编号。接收方可用自己的本地资源导入。同版本资源更容易得到一致结果。见 [改车码说明](SHARE-CODE.md)。 |
-| 导出截图 | 「保存截图」按当前视口的实际输出尺寸写入 PNG。 |
+| 载具库 | 按类别浏览，支持用中英文车名、品牌和模型 ID 搜索。载具数据来自本地档案与游戏图鉴。 |
+| 配件和车漆 | 选择原厂配置，然后在配件列表试装零件或预览实色亮光、金属漆、哑光与珠光。换件会保留当前视角，切换车型会重新从原厂配置开始。 |
+| 改车码 | 复制车型、原厂配置与配件选择。其他玩家可用自己的资源导入。[改车码格式](SHARE-CODE.md) |
+| 摄影棚 | 提供黑白背景预设，支持调光、曝光、地面颜色和粗糙度。车灯默认开启，可把当前视口保存为 PNG。 |
 
-部分跨代车型的简中名称参考洛圣都档案的 GTA V 载具数据库，并按英文车型和版本核对。搜索支持名称校对前的原始简中标签。[洛圣都档案载具数据库](https://www.gtacn.org/vehicles)
+左键拖动环绕，右键拖动平移，滚轮缩放，双击视口重置。自由视角中，左键拖动环视，WASD 移动，Q/E 升降，Shift 加速，滚轮调速度，Esc 退出。
 
-| 相机操作 | 输入 |
+| 图形模式 | 支持情况 |
 | --- | --- |
-| 环绕 / 平移 / 缩放 | 左键拖动 / 右键拖动 / 滚轮 |
-| 重置视角 | 双击视口或点「重置」 |
-| 自由视角 | 在视口内按住左键拖动环视，WASD 移动，Q/E 升降，Shift 加速，滚轮调速度，Esc 退出 |
+| 纯光栅 | Godot Forward+，支持 TAA、FXAA、SMAA、MSAA 和 FSR 2.2，以及反射、环境光遮蔽和间接光照选项。 |
+| 全路径追踪 | 需安装 Godot RTX，且当前渲染显卡支持硬件光追管线。可选每像素 1、2、4 或 8 个样本。 |
+| NVIDIA DLSS | 需支持的 NVIDIA RTX 显卡与 Streamline。提供 DLSS 4.5 Transformer Model M、DLAA、质量、平衡和性能档。路径追踪可选光线重建。 |
 
-## 摄影棚与图形设置
+修改画质后点击「应用画质」。视口 FPS 显示 WinUI 实际更新画面的频率，默认上限为 30 FPS。「帮助」中可查看视口输出尺寸。
 
-摄影棚的顶置柔光板位于镜头之外，可调整灯光、曝光、地面颜色和粗糙度。Godot 在后台运行，WinUI 窗口显示其渲染结果。车灯默认开启。视口右上角的 FPS 是 WinUI 每秒更新的画面数，默认传输上限为 30 FPS。比较档位时可勾选「关闭预览限帧（性能测试）」。路径追踪开关和抗锯齿选择独立保存。MSAA 对光栅几何生效，路径追踪会保留该选择。选好设置后点「应用画质」，渲染器确认后会显示已应用的模式和 3D 比例设定，并保存选择。实际输出尺寸在「帮助」中查看。
+### 兼容性与排查
 
-「灯光与地面」提供白色和黑色摄影棚预设。环绕和自由视角均限制在棚内。
+- 部分原厂配置、配件、贴图和游戏专用材质仍受解码支持限制。载具缺少可组装配置时会尝试载入基础模型，无法装上的组件会显示警告。
+- 改车码目前记录车型、配置和配件。车漆预览留在本次本地预览。不同图形模式下，部分漆面的清漆高光采用不同近似方式。
+- 启动遇到问题时，运行 `Start-Viewer-Safe-Mode.cmd` 使用稳定版 Godot 和纯光栅，并跳过自动读档。「帮助」可以复制诊断信息和打开日志目录。
+- 部分跨代车型名称参考洛圣都档案，并按英文车型与版本核对。[GTA V 载具数据库](https://www.gtacn.org/vehicles)
 
-| 模式 | 可用选项 |
+## English
+
+Leonida Customs is a Windows garage for previewing vehicles, trying parts, and comparing paint finishes using your own Xbox game assets. It reads your files locally in a standalone studio while the game is closed. The source and downloads ship without game assets.
+
+### Quick start
+
+1. Use Windows 10 2004 (build 19041) or later with a Vulkan-capable GPU and driver. The optional Mica backdrop requires Windows 11.
+2. Download and fully extract the Windows x64 ZIP, then run `Start-Viewer.cmd`. The first launch downloads and verifies Godot and SixNG. Subsequent launches can run offline.
+3. Choose **Open game folder**, or validate the folder under **Settings → Game folder**. It must contain `levels.rpf`, `packs.rpf`, and `data.rpf`. Xbox Series 1.0.2.1 has been tested. The first scan may take a few minutes and later launches reuse the index.
+4. Choose **English** or **简体中文** in **Settings → Display language**, then select **Apply language**.
+
+Indexes, cached previews, settings, and logs live in the portable app's `work` directory. Move the full folder to a drive with enough space, or pass a folder with `Start-Viewer.cmd "--game=G:\Your Game Folder"`.
+
+### Garage and studio
+
+| Feature | What you can do |
 | --- | --- |
-| 纯光栅（默认） | Godot Forward+。支持 TAA、FXAA、SMAA、MSAA 2×/4×/8× 和 FSR 2.2，可单独开关反射、环境光遮蔽和间接光照。 |
-| 全路径追踪（可选） | 需 Godot RTX 和当前渲染显卡支持硬件光追管线。提供每像素 1、2、4 或 8 个样本。首次切换或载入新材质时可能需要等待着色器。 |
-| NVIDIA DLSS（可选） | 需 Streamline 和支持的 NVIDIA RTX GPU。DLSS 4.5 超分与 DLAA 使用 Transformer Model M。提供 DLAA、质量、平衡和性能档位。路径追踪下可单独开关 DLSS 光线重建。AMD 显卡可选 FSR 2.2。 |
+| Vehicle library | Browse by category and search by Chinese or English name, manufacturer, or model ID. Vehicle stats come from local metadata and the in-game catalog. |
+| Parts and paint | Start from a stock configuration, then preview parts and gloss, metallic, matte, or pearlescent paint. Changing parts preserves the camera. Selecting another vehicle starts a fresh stock preview. |
+| Build codes | Copy the vehicle, stock configuration, and selected parts. Other players can import the code with their local assets. [Build-code format](SHARE-CODE.md) |
+| Studio | Choose a white or black backdrop, adjust lighting, exposure, floor color and roughness, and save the viewport as a PNG. Vehicle lights are on by default. |
 
-### 安装可选 RTX 运行时
+Left-drag to orbit, right-drag to pan, scroll to zoom, and double-click to reset. In free camera mode, left-drag to look, use WASD to move, Q/E to rise or descend, Shift to move faster, the wheel to adjust speed, and Esc to exit.
 
-在项目或便携版根目录运行下方命令。请先安装并登录 GitHub CLI。只需要路径追踪时，将 `-DLSS` 改为 `-RayTracing`。
+| Graphics mode | Support |
+| --- | --- |
+| Rasterization | Godot Forward+ with TAA, FXAA, SMAA, MSAA, and FSR 2.2. Reflections, ambient occlusion, and indirect lighting are adjustable. |
+| Full path tracing | Requires Godot RTX and a GPU with hardware ray-tracing pipeline support. Select 1, 2, 4, or 8 samples per pixel. |
+| NVIDIA DLSS | Requires a supported NVIDIA RTX GPU and Streamline. DLSS 4.5 Transformer Model M offers DLAA, Quality, Balanced, and Performance. Ray Reconstruction is optional in path tracing. |
+
+Select **Apply graphics** after changing quality settings. The FPS counter reports frames presented by WinUI and defaults to a 30 FPS preview cap. **Help** shows the viewport output resolution.
+
+### Compatibility and troubleshooting
+
+- Support for certain stock configurations, parts, textures, and game-specific materials depends on the decoder. The app can fall back to the base mesh where assembly data is missing and reports parts it cannot fit.
+- Build codes cover the vehicle, configuration, and parts. Paint changes are local to the current preview. Some clear-coat highlights use different approximations in raster and path-traced modes.
+- If startup fails, try `Start-Viewer-Safe-Mode.cmd` to use stable Godot with raster defaults and skip loading the last game folder. **Help** can copy diagnostics and open the logs folder.
+- Some Simplified Chinese vehicle names were checked against the GTA V catalog by English model name and variant. [Los Santos Ledger vehicle database](https://www.gtacn.org/vehicles)
+
+## 安装 RTX 运行时 / Optional RTX runtime
+
+从项目或便携版根目录运行。提前安装并登录 GitHub CLI。只装路径追踪时，使用 `-RayTracing`。
+
+Run from the project or portable root after signing in to GitHub CLI. Use `-RayTracing` for the path-tracing runtime alone.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\Install-ViewerRuntime.ps1 -DLSS
 ```
 
-用 `Start-Viewer-RayTracing.cmd` 启动时，支持路径追踪的设备会直接进入该模式。安装脚本使用 [NVIDIA 官方 Windows 构建](https://github.com/NVIDIA-RTX/godot/actions/runs/41390391716) 和 [Streamline 2.10.0](https://github.com/NVIDIA-RTX/Streamline/releases/tag/v2.10.0)。构建归档到期后，可从 [对应的 NVIDIA Godot 提交](https://github.com/NVIDIA-RTX/godot/tree/49a825dc52c0f1892ff5ce5cdbbe7572c638d41a) 编译 Windows x64 编辑器，并把 `godot.windows.editor.x86_64.exe` 放进 `tools/godot-rtx`。
+`Start-Viewer-RayTracing.cmd` launches directly into path tracing on supported hardware. If the CI artifact expires, build the pinned revision and place `godot.windows.editor.x86_64.exe` in `tools/godot-rtx`. [NVIDIA build](https://github.com/NVIDIA-RTX/godot/actions/runs/41390391716) · [Pinned Godot revision](https://github.com/NVIDIA-RTX/godot/tree/49a825dc52c0f1892ff5ce5cdbbe7572c638d41a) · [Streamline 2.10.0](https://github.com/NVIDIA-RTX/Streamline/releases/tag/v2.10.0)
 
-## 当前兼容范围
+## 从源码构建 / Build from source
 
-- 缺少可组装原厂配置的车型会尝试加载基础模型。可用调校件取决于资源的解码情况，找不到挂点的组件会显示装配警告。
-- 车漆预览使用摄影棚的材质参数。纯光栅使用独立清漆层，全路径追踪为亮光实色和珠光近似清漆高光，并保留金属漆原先的基础反射。部分材质细节、涂装和配件受 Xbox 贴图解码和游戏专用着色器限制。
-- 改车码保存车型、原厂配置和配件。目前的漆色预览只在本机生效。
-
-## 故障排查
-
-- 启动异常时运行 `Start-Viewer-Safe-Mode.cmd`。它会使用稳定版 Godot 和默认纯光栅设置，并跳过自动读取上次的目录。
-- 停在安装窗口时，检查下载错误提示和解压目录的写入权限，然后重新运行 `Start-Viewer.cmd`。
-- 反馈问题时可在「帮助」复制版本、系统、渲染能力和视口分辨率的摘要，也可打开日志所在目录。公开分享原始日志前请先去掉本地路径。
-
-## 从源码构建
-
-安装 .NET 10 SDK 后运行以下命令：
+安装 .NET 10 SDK / Install the .NET 10 SDK.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1
 .\Start-Viewer.cmd
 ```
 
-使用 `Build-WinUI.ps1` 重新编译，使用 `Package-Viewer.ps1` 在 `work/dist` 生成便携 ZIP 和 SHA-256 文件。Godot 的 `main.tscn` 用于单独调试摄影棚。RTX 渲染切换检查无需游戏资源：
+- `Build-WinUI.ps1` — 编译 WinUI / Build the Windows app.
+- `Package-Viewer.ps1` — 生成便携 ZIP 与 SHA-256 至 `work/dist` / Create the portable ZIP and its checksum in `work/dist`.
+- `main.tscn` — 单独调试摄影棚 / Debug the studio without the WinUI host.
 
 ```powershell
 .\tools\godot-rtx\godot.windows.editor.x86_64.exe --path . --script tests/render_mode_smoke.gd -- --require-rtx --require-dlss
 ```
 
-## 许可与依赖
+## 许可与依赖 / License and dependencies
 
-Leonida Customs 是非官方项目，与 Rockstar Games 无关联。项目源码按 [GPL-3.0-only](LICENSE) 发布。游戏资源由玩家自行提供。
+Leonida Customs 是独立项目，与 Rockstar Games 无关联。
 
-- [Windows App SDK / WinUI 3](https://learn.microsoft.com/en-us/windows/apps/windows-app-sdk/) 2.6.5 负责 Windows 界面。
-- [Godot 4.7.2](https://godotengine.org/download/archive/4.7.2-stable/) 负责同窗摄影棚渲染，采用 MIT 许可。NVIDIA 运行时按其许可单独获取。
-- [SixNG 0.11.0](https://github.com/holdmysocks/SixNG/releases/tag/v0.11.0) 以独立进程读取本地资源，采用 GPL-3.0。可用 `SIXNG_EXE` 指定兼容的本地版本。
+Leonida Customs is an unofficial project unaffiliated with Rockstar Games.
+
+[GPL-3.0-only](LICENSE) · [WinUI 3 / Windows App SDK](https://learn.microsoft.com/en-us/windows/apps/windows-app-sdk/) · [Godot 4.7.2](https://godotengine.org/download/archive/4.7.2-stable/) · [SixNG 0.11.0](https://github.com/holdmysocks/SixNG/releases/tag/v0.11.0)

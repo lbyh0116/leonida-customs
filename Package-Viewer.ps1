@@ -30,7 +30,7 @@ function Write-ZipFile($Archive, [string]$File, [string]$Entry) {
 try {
     $Archive = [System.IO.Compression.ZipFile]::Open($Pending, [System.IO.Compression.ZipArchiveMode]::Create)
     try {
-        foreach ($Name in @('LICENSE', 'README.md', 'SHARE-CODE.md', 'project.godot', 'main.tscn',
+        foreach ($Name in @('LICENSE', 'README.md', 'SHARE-CODE.md', 'docs/social-preview.png', 'project.godot', 'main.tscn',
             'preview-worker.tscn', 'Install-ViewerRuntime.ps1', 'Start-Viewer.cmd', 'Start-Viewer-Safe-Mode.cmd',
             'Start-Viewer-RayTracing.cmd', 'tools/.gdignore', 'tools/install-sixng.ps1', 'tools/install-rtx.ps1')) {
             Write-ZipFile $Archive (Join-Path $Root $Name) $Name
