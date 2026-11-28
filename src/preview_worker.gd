@@ -180,7 +180,8 @@ func _handle(request: Dictionary) -> void:
 				lighting[key] = Color.from_string(str(data[key]), lighting[key]) if lighting[key] is Color else float(data[key])
 			_stage.set_lighting(lighting)
 		"paint":
-			_stage.set_paint(int(data.get("finish", 0)), str(data.get("color", "")))
+			if not _preview_model.is_empty() and data.get("model") == _preview_model:
+				_stage.set_paint(int(data.get("finish", 0)), str(data.get("color", "")))
 		"lamps":
 			_stage.set_vehicle_lamps(bool(data.get("enabled", true)))
 		"camera":
@@ -224,7 +225,7 @@ func _run_asset_command(command: String, data: Dictionary) -> Dictionary:
 			var result: Dictionary = await _source.preview(model, int(data.config), data.parts)
 			if not result.get("ok", false):
 				return result
-			var asset: Dictionary = _stage.show_model(result.path, model == _preview_model)
+			var asset: Dictionary = _stage.show_model(result.path, model == _preview_model, bool(data.get("reset_paint", false)))
 			if asset.has("error"):
 				return {"ok": false, "error": asset.error}
 			_preview_model = model

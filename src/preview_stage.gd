@@ -12,6 +12,9 @@ const CAMERA_MAX_RADIUS := 45.0
 const STUDIO_FLAT_RADIUS := 57.0
 const STUDIO_BEND_RADIUS := 7.0
 const STUDIO_HEIGHT := 48.0
+const DEFAULT_YAW := PI * 0.78
+const LARGE_VIEW_PITCH := 0.36
+const FIT_MARGIN := 0.86
 
 var stage: Node3D
 var viewport: SubViewport
@@ -36,6 +39,7 @@ var _paint_finish := 0
 var _paint_color := ""
 var _fly_speed := 4.0
 var _free_view := false
+var _free_drag := false
 var external_input := false
 var _remote_keys: Dictionary = {}
 var _lighting := {
@@ -52,8 +56,12 @@ var _target := Vector3.ZERO
 var _center := Vector3.ZERO
 var _radius := 3.0
 var _distance := 9.0
-var _yaw := PI * 0.78
+var _yaw := DEFAULT_YAW
 var _pitch := 0.27
+var _vehicle_bounds := AABB()
+var _large_vehicle := false
+var _framing := 1.0
+var _studio_scale := 1.0
 var _key: DirectionalLight3D
 
 
@@ -99,7 +107,8 @@ func _ready() -> void:
 	camera.far = 500
 	stage.add_child(camera)
 	_add_floor_reflection()
-	viewport.size_changed.connect(_move_camera)
+	viewport.size_changed.connect(_resize_camera)
+	mouse_exited.connect(func(): _free_drag = false)
 	set_lighting(_lighting)
 	set_effects(true, true, true, true)
 	reset_camera()
@@ -182,7 +191,7 @@ func _add_floor_reflection() -> void:
 
 
 func _resize_floor_reflection() -> void:
-	_mirror_view.size = (viewport.size / 2).max(Vector2i(4, 4))
+	_mirror_view.size = (viewport.size / (3 if _large_vehicle else 2)).max(Vector2i(4, 4))
 	_mirror_dirty = true
 
 
@@ -375,7 +384,7 @@ func _update_tire_contacts(geometries: Array[Node]) -> void:
 	_floor_parameter("tire_count", count)
 
 
-func show_model(path: String, preserve_camera := false) -> Dictionary:
+func show_model(path: String, preserve_camera := false, reset_paint := false) -> Dictionary:
 	var gltf := GLTFDocument.new()
 	var state := GLTFState.new()
 	var error := gltf.append_from_file(path, state)
@@ -407,20 +416,30 @@ func show_model(path: String, preserve_camera := false) -> Dictionary:
 	if not preserve_camera:
 		_model_origin = Vector2(center.x, center.z)
 	holder.position = Vector3(-_model_origin.x, -bounds.position.y + 0.002, -_model_origin.y)
+	_vehicle_bounds = holder.transform * bounds
 	var materials := VehicleMaterials.new()
-	materials.apply(geometries, state, path, holder.transform * bounds)
+	materials.apply(geometries, state, path, _vehicle_bounds)
 	_painted_surfaces = materials.painted_surfaces
 	_vehicle_lamps = materials.vehicle_lamps
 	set_vehicle_lamps(_lamps_enabled)
-	set_paint(_paint_finish, _paint_color)
+	if reset_paint or not preserve_camera:
+		set_paint(0, "")
+	else:
+		set_paint(_paint_finish, _paint_color)
 	_update_tire_contacts(geometries)
 	if model != null:
 		stage.remove_child(model)
 		model.queue_free()
 	model = holder
-	_center = Vector3(0, bounds.size.y * 0.40, 0)
+	_large_vehicle = maxf(bounds.size.x, bounds.size.z) >= 12.0 or bounds.size.y >= 7.0
+	_center = Vector3(0, bounds.size.y * 0.40, 0) if not _large_vehicle else _vehicle_bounds.get_center()
 	_radius = maxf(0.25, bounds.size.length() / 2.0)
-	_key.directional_shadow_max_distance = maxf(22.0, _radius * 5.0)
+	_update_camera_framing()
+	_resize_floor_reflection()
+	var panel_scale := maxf(1.0, maxf(_vehicle_bounds.end.y / 2.3, maxf(bounds.size.x, bounds.size.z) / 15.0)) if _large_vehicle else 1.0
+	_panel.position.y = PANEL_HEIGHT * panel_scale
+	_panel.area_size = PANEL_SIZE * panel_scale
+	_panel.area_range = 12.0 * panel_scale
 	if not preserve_camera:
 		reset_camera()
 	return {"meshes": geometries.size(), "size": bounds.size, "paintable": not _painted_surfaces.is_empty()}
@@ -456,16 +475,57 @@ func clear_model() -> void:
 	_floor_parameter("tire_count", 0)
 	_center = Vector3.ZERO
 	_radius = 3.0
+	_large_vehicle = false
+	_vehicle_bounds = AABB()
+	_update_camera_framing()
+	_resize_floor_reflection()
 	reset_camera()
 
 
 func reset_camera() -> void:
 	set_free_view(false)
 	_target = _center
-	_yaw = PI * 0.78
-	_pitch = 0.23
-	_distance = _radius * 2.78
+	_yaw = DEFAULT_YAW
+	_pitch = LARGE_VIEW_PITCH if _large_vehicle else 0.23
+	_distance = _fit_distance(1.4) if _large_vehicle else _radius * 2.78
 	_move_camera()
+
+
+func _resize_camera() -> void:
+	_update_camera_framing()
+	if _free_view:
+		camera.position = _bound_camera_point(camera.position, CAMERA_MAX_RADIUS * _studio_scale, CAMERA_MAX_HEIGHT * _studio_scale)
+	else:
+		_move_camera()
+
+
+func _update_camera_framing() -> void:
+	var area := Vector2(viewport.size)
+	var aspect := maxf(0.1, area.x / maxf(area.y, 1.0))
+	var fit := 0.0
+	_framing = maxf(1.0, 0.98 / aspect)
+	_studio_scale = 1.0
+	if _large_vehicle:
+		fit = _fit_distance(aspect)
+		_framing = fit / _fit_distance(1.4)
+		_studio_scale = maxf(1.0, fit / 32.0)
+	floor_surface.scale = Vector3.ONE * _studio_scale
+	camera.far = 500.0 * _studio_scale
+	_key.directional_shadow_max_distance = maxf(22.0, maxf(_radius * 5.0, fit + _radius))
+
+
+func _fit_distance(aspect: float) -> float:
+	var back := Vector3(sin(DEFAULT_YAW) * cos(LARGE_VIEW_PITCH), sin(LARGE_VIEW_PITCH), cos(DEFAULT_YAW) * cos(LARGE_VIEW_PITCH))
+	var right := Vector3.UP.cross(back).normalized()
+	var up := back.cross(right)
+	var vertical := tan(deg_to_rad(camera.fov * 0.5)) * FIT_MARGIN
+	var horizontal := vertical * aspect
+	var fit := camera.near
+	for index in 8:
+		var offset := _vehicle_bounds.get_endpoint(index) - _center
+		var depth := maxf(absf(offset.dot(up)) / vertical, absf(offset.dot(right)) / horizontal)
+		fit = maxf(fit, offset.dot(back) + maxf(camera.near, depth))
+	return fit
 
 
 func set_grid(enabled: bool) -> void:
@@ -482,7 +542,10 @@ func _process(delta: float) -> void:
 
 
 func _gui_input(event: InputEvent) -> void:
-	if model == null or _free_view:
+	if model == null:
+		return
+	if _free_view:
+		_free_view_gui_input(event)
 		return
 	if event is InputEventMouseMotion:
 		if event.button_mask & MOUSE_BUTTON_MASK_LEFT:
@@ -513,16 +576,18 @@ func _gui_input(event: InputEvent) -> void:
 func _move_camera() -> void:
 	if not is_instance_valid(camera) or _free_view:
 		return
-	_target = _bound_camera_point(_target, CAMERA_MAX_RADIUS - 3.0, CAMERA_MAX_HEIGHT - 2.0)
-	var framing := _aspect_framing()
-	var max_distance := minf(_radius * 7.0, CAMERA_MAX_RADIUS / framing)
-	_distance = clampf(_distance, minf(_radius * 1.1, max_distance), max_distance)
-	var distance := _distance * framing
+	var radius_limit := CAMERA_MAX_RADIUS * _studio_scale
+	var ceiling := CAMERA_MAX_HEIGHT * _studio_scale
+	_target = _bound_camera_point(_target, radius_limit - 3.0, ceiling - 2.0)
+	var max_distance := minf(_radius * 7.0, radius_limit / _framing)
+	var min_distance := minf(_radius * 1.1, 6.0) if _large_vehicle else _radius * 1.1
+	_distance = clampf(_distance, minf(min_distance, max_distance), max_distance)
+	var distance := _distance * _framing
 	var floor_pitch := asin(clampf((CAMERA_MIN_HEIGHT - _target.y) / distance, -1.0, 1.0))
-	var ceiling_pitch := asin(clampf((CAMERA_MAX_HEIGHT - _target.y) / distance, -1.0, 1.0))
+	var ceiling_pitch := asin(clampf((ceiling - _target.y) / distance, -1.0, 1.0))
 	var pitch := clampf(_pitch, floor_pitch, ceiling_pitch)
 	var direction := Vector3(sin(_yaw) * cos(pitch), sin(pitch), cos(_yaw) * cos(pitch))
-	camera.position = _bound_camera_point(_target + direction * distance, CAMERA_MAX_RADIUS, CAMERA_MAX_HEIGHT)
+	camera.position = _bound_camera_point(_target + direction * distance, radius_limit, ceiling)
 	camera.look_at(_target, Vector3.UP)
 
 
@@ -536,23 +601,15 @@ func set_free_view(active: bool) -> void:
 		return
 	_free_view = active
 	if active:
-		_fly_speed = clampf(_radius * 1.5, 1.0, 20.0)
-		if not external_input:
-			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		_fly_speed = clampf(_radius * 1.5, 1.0, 45.0 if _large_vehicle else 20.0)
 	else:
+		_free_drag = false
 		_remote_keys.clear()
-		if not external_input:
-			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		var back := camera.global_basis.z
 		_yaw = atan2(back.x, back.z)
 		_pitch = asin(clampf(back.y, -1.0, 1.0))
-		_target = camera.position - back * _distance * _aspect_framing()
+		_target = camera.position - back * _distance * _framing
 	free_view_changed.emit(_free_view)
-
-
-func _aspect_framing() -> float:
-	var area := Vector2(viewport.size) if external_input else size
-	return maxf(1.0, 0.98 / maxf(0.1, area.x / maxf(area.y, 1.0)))
 
 
 func _move_free_camera(delta: float) -> void:
@@ -566,38 +623,46 @@ func _move_free_camera(delta: float) -> void:
 	if move.length_squared() > 0.0:
 		var boost := 3.0 if _key_held(KEY_SHIFT) else 1.0
 		var position := camera.position + move.normalized() * _fly_speed * boost * delta
-		camera.position = _bound_camera_point(position, CAMERA_MAX_RADIUS, CAMERA_MAX_HEIGHT)
+		camera.position = _bound_camera_point(position, CAMERA_MAX_RADIUS * _studio_scale, CAMERA_MAX_HEIGHT * _studio_scale)
+
+
+func _free_view_gui_input(event: InputEvent) -> void:
+	if external_input:
+		return
+	if event is InputEventMouseMotion and _free_drag and event.button_mask & MOUSE_BUTTON_MASK_LEFT:
+		if Rect2(Vector2.ZERO, size).has_point(event.position):
+			_look_drag(event.relative)
+	elif event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_LEFT:
+			_free_drag = event.pressed and Rect2(Vector2.ZERO, size).has_point(event.position)
+		elif event.pressed and event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
+			_adjust_fly_speed(event.button_index == MOUSE_BUTTON_WHEEL_UP)
+		else:
+			return
+	else:
+		return
+	accept_event()
+
+
+func _look_drag(motion: Vector2) -> void:
+	camera.rotation.y -= motion.x * 0.0028
+	camera.rotation.x = clampf(camera.rotation.x - motion.y * 0.0028, -1.54, 1.54)
+
+
+func _adjust_fly_speed(up: bool) -> void:
+	_fly_speed = clampf(_fly_speed * (1.22 if up else 1.0 / 1.22), 0.35, 90.0 if _large_vehicle else 65.0)
 
 
 func _input(event: InputEvent) -> void:
-	if not _free_view or external_input:
-		return
-	if event is InputEventMouseMotion:
-		camera.rotation.y -= event.screen_relative.x * 0.0028
-		camera.rotation.x = clampf(camera.rotation.x - event.screen_relative.y * 0.0028, -1.54, 1.54)
-	elif event is InputEventMouseButton and event.pressed:
-		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
-			_fly_speed = minf(_fly_speed * 1.22, 65.0)
-		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			_fly_speed = maxf(_fly_speed / 1.22, 0.35)
-	elif event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
+	if _free_view and not external_input and event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
 		set_free_view(false)
-	else:
-		return
-	get_viewport().set_input_as_handled()
+		get_viewport().set_input_as_handled()
 
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT and _free_view and not external_input:
 		set_free_view(false)
 
-
-
-func _exit_tree() -> void:
-	if _free_view:
-		_remote_keys.clear()
-		if not external_input:
-			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 
 func _key_held(key: Key) -> bool:
@@ -616,17 +681,18 @@ func remote_camera_input(action: String, data: Dictionary) -> void:
 				_remote_keys.erase(key)
 		"motion":
 			var motion := Vector2(data.x, data.y)
+			var buttons := int(data.buttons) as MouseButtonMask
 			if _free_view:
-				camera.rotation.y -= motion.x * 0.0028
-				camera.rotation.x = clampf(camera.rotation.x - motion.y * 0.0028, -1.54, 1.54)
+				if buttons & MOUSE_BUTTON_MASK_LEFT:
+					_look_drag(motion)
 			else:
 				var event := InputEventMouseMotion.new()
 				event.relative = motion
-				event.button_mask = int(data.buttons) as MouseButtonMask
+				event.button_mask = buttons
 				_gui_input(event)
 		"wheel":
 			if _free_view:
-				_fly_speed = clampf(_fly_speed * (1.22 if data.up else 1.0 / 1.22), 0.35, 65.0)
+				_adjust_fly_speed(data.up)
 			else:
 				var event := InputEventMouseButton.new()
 				event.button_index = MOUSE_BUTTON_WHEEL_UP if data.up else MOUSE_BUTTON_WHEEL_DOWN

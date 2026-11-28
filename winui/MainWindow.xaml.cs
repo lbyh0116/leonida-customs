@@ -49,6 +49,7 @@ public sealed partial class MainWindow : Window
     private string? preferencePath;
     private Preferences preferences = new();
     private bool paintable;
+    private bool resetPaintOnPreview;
     private bool closing;
     private bool assemblingVehicle;
     private bool applyingParts;
@@ -68,6 +69,7 @@ public sealed partial class MainWindow : Window
     private IReadOnlyList<AaTier> aaTiers = [];
     private readonly Dictionary<AaMethod, int> selectedTiers = new();
     private Point? pointerPosition;
+    private uint? dragPointer;
     private readonly HashSet<VirtualKey> heldKeys = new();
 
     public MainWindow()
@@ -87,12 +89,22 @@ public sealed partial class MainWindow : Window
                 await UpdatePaintAsync();
         };
         PreviewSurface.SizeChanged += async (_, _) => await ResizePreviewAsync();
-        PreviewSurface.PointerPressed += (sender, args) =>
+        PreviewSurface.PointerPressed += (_, args) =>
         {
-            pointerPosition = args.GetCurrentPoint(PreviewSurface).Position;
-            PreviewSurface.CapturePointer(args.Pointer);
+            var point = args.GetCurrentPoint(PreviewSurface);
+            if (dragPointer is null && IsInsidePreview(point.Position) && PreviewSurface.CapturePointer(args.Pointer))
+            {
+                dragPointer = args.Pointer.PointerId;
+                pointerPosition = point.Position;
+            }
         };
-        PreviewSurface.PointerReleased += (_, args) => PreviewSurface.ReleasePointerCapture(args.Pointer);
+        PreviewSurface.PointerReleased += (_, args) =>
+        {
+            ClearPreviewDrag(args);
+            PreviewSurface.ReleasePointerCapture(args.Pointer);
+        };
+        PreviewSurface.PointerCaptureLost += (_, args) => ClearPreviewDrag(args);
+        PreviewSurface.PointerCanceled += (_, args) => ClearPreviewDrag(args);
         PreviewSurface.PointerExited += (_, _) => pointerPosition = null;
         PreviewSurface.PointerMoved += PreviewPointerMoved;
         PreviewSurface.PointerWheelChanged += async (_, args) =>
@@ -225,7 +237,7 @@ public sealed partial class MainWindow : Window
                 if (Fly.IsChecked != true)
                     heldKeys.Clear();
                 CameraHint.Text = Fly.IsChecked == true
-                    ? "WASD 移动 · Q/E 升降 · Esc 退出"
+                    ? "左键拖动环视 · WASD 移动 · Q/E 升降 · Esc 退出"
                     : "拖动旋转 · 右键平移 · 滚轮缩放";
                 break;
             case "path_warmup":
@@ -350,7 +362,7 @@ public sealed partial class MainWindow : Window
             vehicles = response.GetProperty("vehicles").Deserialize<List<Vehicle>>(JsonOptions) ?? [];
             selected = null;
             displayed = null;
-            paintable = false;
+            ResetPaintControls();
             ViewTitle.Text = "白色摄影棚";
             ViewSubtitle.Text = "选择载具即可预览";
             MeshDetails.Text = "";
@@ -410,6 +422,8 @@ public sealed partial class MainWindow : Window
     private void SelectVehicle(Vehicle vehicle)
     {
         selected = vehicle;
+        displayed = null;
+        ResetPaintControls();
         populating = true;
         Search.Text = "";
         Category.SelectedItem = vehicle.Category;
@@ -574,6 +588,8 @@ public sealed partial class MainWindow : Window
             while (pendingParts is { } next && connected && !busy && !closing)
             {
                 pendingParts = null;
+                if (next.Model != selected?.Id || next.Config != Factory.SelectedIndex)
+                    continue;
                 try { await RenderAsync(next.Config, next.Parts); }
                 catch (Exception ex) when (ex is not OutOfMemoryException)
                 {
@@ -614,7 +630,7 @@ public sealed partial class MainWindow : Window
         JsonElement reply;
         try
         {
-            reply = await renderer.RequestAsync("preview", new { model = vehicle.Id, config, parts });
+            reply = await renderer.RequestAsync("preview", new { model = vehicle.Id, config, parts, reset_paint = resetPaintOnPreview });
         }
         finally
         {
@@ -623,6 +639,7 @@ public sealed partial class MainWindow : Window
         }
         if (closing || selected != vehicle || Factory.SelectedIndex != config)
             return;
+        resetPaintOnPreview = false;
         var size = reply.GetProperty("size").EnumerateArray().Select(d => d.GetDouble()).ToArray();
         var issues = reply.GetProperty("issues").GetInt32();
         var baseModel = reply.GetProperty("base").GetBoolean();
@@ -655,10 +672,20 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void ResetPaintControls()
+    {
+        paintable = false;
+        resetPaintOnPreview = true;
+        PaintFinish.IsEnabled = false;
+        PaintFinish.SelectedIndex = 0;
+        PaintColor.Text = "";
+        PaintColor.IsEnabled = false;
+    }
+
     private Task UpdatePaintAsync()
     {
         PaintColor.IsEnabled = PaintFinish.IsEnabled && PaintFinish.SelectedIndex > 0;
-        if (!PaintFinish.IsEnabled)
+        if (!PaintFinish.IsEnabled || selected is not { } current)
             return Task.CompletedTask;
         var color = PaintColor.Text.Trim();
         if (PaintColor.IsEnabled && color.Length > 0 && !ColorPattern.IsMatch(color))
@@ -666,7 +693,7 @@ public sealed partial class MainWindow : Window
             Report("漆色请输入 #RRGGBB，留空使用原车颜色。", error: true);
             return Task.CompletedTask;
         }
-        return PostAsync("paint", new { finish = PaintFinish.SelectedIndex, color });
+        return PostAsync("paint", new { model = current.Id, finish = PaintFinish.SelectedIndex, color });
     }
 
     private void CopyClicked(object sender, RoutedEventArgs args)
@@ -739,15 +766,28 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private bool IsInsidePreview(Point point) =>
+        point.X >= 0 && point.Y >= 0 && point.X < PreviewSurface.ActualWidth && point.Y < PreviewSurface.ActualHeight;
+
+    private void ClearPreviewDrag(PointerRoutedEventArgs args)
+    {
+        if (args.Pointer.PointerId != dragPointer)
+            return;
+        dragPointer = null;
+        pointerPosition = null;
+    }
+
     private async void PreviewPointerMoved(object sender, PointerRoutedEventArgs args)
     {
+        if (args.Pointer.PointerId != dragPointer)
+            return;
         var sample = args.GetCurrentPoint(PreviewSurface);
         var previous = pointerPosition;
-        pointerPosition = sample.Position;
+        pointerPosition = IsInsidePreview(sample.Position) ? sample.Position : null;
         var buttons = (sample.Properties.IsLeftButtonPressed ? 1 : 0)
             | (sample.Properties.IsRightButtonPressed ? 2 : 0)
             | (sample.Properties.IsMiddleButtonPressed ? 4 : 0);
-        if (previous is null || (buttons == 0 && Fly.IsChecked != true))
+        if (previous is null || pointerPosition is null || (Fly.IsChecked == true ? (buttons & 1) == 0 : buttons == 0))
             return;
         var x = sample.Position.X - previous.Value.X;
         var y = sample.Position.Y - previous.Value.Y;

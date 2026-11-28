@@ -184,7 +184,7 @@ func _build_ui() -> void:
 	camera_bar.add_child(instructions)
 	preview_stage.free_view_changed.connect(func(active: bool):
 		free_button.set_pressed_no_signal(active)
-		instructions.text = "WASD 移动 · Q/E 升降 · Esc 退出" if active else "左键旋转 · 右键平移 · 滚轮缩放")
+		instructions.text = "左键拖动环视 · WASD 移动 · Q/E 升降 · Esc 退出" if active else "左键旋转 · 右键平移 · 滚轮缩放")
 
 	var controls_panel := _panel_column(panels, 267)
 	var tabs := TabContainer.new()
