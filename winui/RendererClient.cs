@@ -9,6 +9,8 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 
+using static VehicleStudio.UiText;
+
 namespace VehicleStudio;
 
 internal sealed class RendererClient : IDisposable
@@ -36,7 +38,7 @@ internal sealed class RendererClient : IDisposable
             ? rtx
             : Path.Combine(root, "tools", "godot", "Godot_v4.7.2-stable_win64.exe");
         if (!File.Exists(engine))
-            throw new InvalidOperationException("找不到 Godot。请使用 Start-Viewer.cmd 安装或修复运行时。");
+            throw new InvalidOperationException(T("找不到 Godot。请使用 Start-Viewer.cmd 安装或修复运行时。"));
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
         timeout.CancelAfter(TimeSpan.FromSeconds(20));
@@ -58,7 +60,7 @@ internal sealed class RendererClient : IDisposable
         options.ArgumentList.Add("--");
         options.ArgumentList.Add($"--studio-port={port}");
         options.ArgumentList.Add($"--studio-token={secret}");
-        worker = Process.Start(options) ?? throw new InvalidOperationException("无法启动预览进程。");
+        worker = Process.Start(options) ?? throw new InvalidOperationException(T("无法启动预览进程。"));
         connection = await listener.AcceptTcpClientAsync(timeout.Token);
         listener.Stop();
         connection.NoDelay = true;
@@ -67,7 +69,7 @@ internal sealed class RendererClient : IDisposable
         var prefix = new byte[4];
         var hello = await ReadHeaderAsync(stream, prefix, timeout.Token);
         if (hello.GetProperty("event").GetString() != "hello" || hello.GetProperty("token").GetString() != secret)
-            throw new InvalidOperationException("预览进程验证失败。");
+            throw new InvalidOperationException(T("预览进程验证失败。"));
         _ = Task.Run(() => ReadAsync(stream, prefix));
         return hello;
     }
@@ -96,7 +98,7 @@ internal sealed class RendererClient : IDisposable
     private async Task SendAsync(int id, string command, object data)
     {
         if (writer is null)
-            throw new IOException("预览进程还未连接。");
+            throw new IOException(T("预览进程还未连接。"));
         await writeLock.WaitAsync(lifetime.Token);
         try
         {
@@ -140,8 +142,8 @@ internal sealed class RendererClient : IDisposable
         if (lifetime.IsCancellationRequested)
             return;
         foreach (var request in requests.Values)
-            request.TrySetException(new IOException("预览进程已断开。", failure));
-        Disconnected?.Invoke("预览进程已断开。可关闭并重新启动预览器。");
+            request.TrySetException(new IOException(T("预览进程已断开。"), failure));
+        Disconnected?.Invoke(T("预览进程已断开。可关闭并重新启动预览器。"));
     }
 
     private static async Task<JsonElement> ReadHeaderAsync(NetworkStream stream, byte[] prefix, CancellationToken token)
@@ -149,7 +151,7 @@ internal sealed class RendererClient : IDisposable
         await stream.ReadExactlyAsync(prefix, token);
         var length = BinaryPrimitives.ReadInt32LittleEndian(prefix);
         if (length is < 2 or > (4 << 20))
-            throw new IOException("预览进程发送了无效的消息长度。");
+            throw new IOException(T("预览进程发送了无效的消息长度。"));
         var header = new byte[length];
         await stream.ReadExactlyAsync(header, token);
         using var document = JsonDocument.Parse(header);
@@ -161,7 +163,7 @@ internal sealed class RendererClient : IDisposable
         var width = message.GetProperty("width").GetInt32();
         var height = message.GetProperty("height").GetInt32();
         if (width is < 8 or > 16384 || height is < 8 or > 16384 || (long)width * height > MaxFramePixels)
-            throw new IOException("预览进程发送了无效的画面尺寸。");
+            throw new IOException(T("预览进程发送了无效的画面尺寸。"));
         var frame = new PreviewFrame(width, height);
         try
         {

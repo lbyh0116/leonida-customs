@@ -16,6 +16,8 @@ using Windows.Graphics;
 using Windows.Storage.Pickers;
 using WinRT.Interop;
 
+using static VehicleStudio.UiText;
+
 namespace VehicleStudio;
 
 public sealed partial class MainWindow : Window
@@ -28,6 +30,9 @@ public sealed partial class MainWindow : Window
     private const string DarkFloor = "#171A1F";
     private static readonly string[] Arguments = Environment.GetCommandLineArgs();
     private readonly bool safeMode = Arguments.Contains("--safe-mode");
+    private readonly string? initialGame;
+    private readonly string? initialModel;
+    private readonly bool openSettings;
     private readonly RendererClient renderer = new();
     private readonly List<ComboBox> partChoices = new();
     private readonly Dictionary<string, Slider> lightSliders = new();
@@ -48,6 +53,7 @@ public sealed partial class MainWindow : Window
     private string adapterVendor = "";
     private bool appearanceReady;
     private string? preferencePath;
+    private string? loadedGame;
     private Preferences preferences = new();
     private bool paintable;
     private bool resetPaintOnPreview;
@@ -73,8 +79,16 @@ public sealed partial class MainWindow : Window
     private uint? dragPointer;
     private readonly HashSet<VirtualKey> heldKeys = new();
 
-    public MainWindow()
+    public MainWindow() : this(null, null, false) { }
+
+    internal MainWindow(string? game, string? model, bool settings)
     {
+        (initialGame, initialModel, openSettings) = (game, model, settings);
+        projectFolder = FindProject();
+        if (projectFolder is { } root)
+            preferencePath = Path.Combine(root, "work", "viewer-preferences.json");
+        preferences = ReadPreferences();
+        UiText.English = preferences.Language == "en";
         InitializeComponent();
         fpsTimer.Tick += (_, _) => UpdateFps();
         Shell.ActualThemeChanged += (_, _) => UpdateTitleTheme();
@@ -136,6 +150,8 @@ public sealed partial class MainWindow : Window
         };
     }
 
+    public string TextFor(string text) => T(text);
+
     private async void ShellLoaded(object sender, RoutedEventArgs args)
     {
         if (started)
@@ -152,9 +168,10 @@ public sealed partial class MainWindow : Window
         SetBusy(true);
         try
         {
-            var root = projectFolder = LocateProject();
-            preferencePath = Path.Combine(root, "work", "viewer-preferences.json");
-            LoadPreferences();
+            var root = projectFolder ?? throw new InvalidOperationException(T("找不到 project.godot。请从项目目录的启动脚本打开。"));
+            LoadPreferenceControls();
+            if (openSettings)
+                ShowSettings(open: true);
             renderer.Notification += message => DispatcherQueue.TryEnqueue(() => OnRendererEvent(message));
             renderer.FrameReceived += frame =>
             {
@@ -163,6 +180,8 @@ public sealed partial class MainWindow : Window
             };
             renderer.Disconnected += message => DispatcherQueue.TryEnqueue(() =>
             {
+                if (closing)
+                    return;
                 connected = false;
                 fpsTimer.Stop();
                 FpsLabel.Text = "";
@@ -180,7 +199,7 @@ public sealed partial class MainWindow : Window
                 hidden = RendererWindow.TryHide(renderer.ProcessId);
             }
             if (!hidden)
-                throw new InvalidOperationException("未能隐藏渲染辅助窗口。");
+                throw new InvalidOperationException(T("未能隐藏渲染辅助窗口。"));
 
             connected = true;
             var capabilities = hello.GetProperty("capabilities");
@@ -200,12 +219,12 @@ public sealed partial class MainWindow : Window
             fpsTimer.Start();
             await PostAsync("frame_ack", new { });
             SetBusy(false);
-            var saved = Arguments.FirstOrDefault(arg => arg.StartsWith("--game=", StringComparison.Ordinal))?[7..]
+            var saved = initialGame ?? Arguments.FirstOrDefault(arg => arg.StartsWith("--game=", StringComparison.Ordinal))?[7..]
                 ?? (safeMode ? null : hello.GetProperty("saved_game").GetString());
             if (!string.IsNullOrWhiteSpace(saved))
                 await LoadGameAsync(saved);
             else
-                Report("用「打开游戏目录」选择自己的 Xbox 版资源。需要帮助时点右上角「帮助」。");
+                Report(T("用「打开游戏目录」选择自己的 Xbox 版资源。需要帮助时点右上角「帮助」。"));
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -215,16 +234,16 @@ public sealed partial class MainWindow : Window
             SetBusy(false);
             renderer.Dispose();
             RenderPanel.Visibility = Visibility.Collapsed;
-            Report(ex is OperationCanceledException ? "预览进程启动超时。可使用安全模式或从「帮助」打开日志。" : ex.Message, error: true);
+            Report(ex is OperationCanceledException ? T("预览进程启动超时。可使用安全模式或从「帮助」打开日志。") : ex.Message, error: true);
         }
     }
 
-    private static string LocateProject()
+    private static string? FindProject()
     {
         for (DirectoryInfo? dir = new(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
             if (File.Exists(Path.Combine(dir.FullName, "project.godot")))
                 return dir.FullName;
-        throw new InvalidOperationException("找不到 project.godot。请从项目目录的启动脚本打开。");
+        return null;
     }
 
     private void OnRendererEvent(JsonElement message)
@@ -239,8 +258,8 @@ public sealed partial class MainWindow : Window
                 if (Fly.IsChecked != true)
                     heldKeys.Clear();
                 CameraHint.Text = Fly.IsChecked == true
-                    ? "左键拖动环视 · WASD 移动 · Q/E 升降 · Esc 退出"
-                    : "拖动旋转 · 右键平移 · 滚轮缩放";
+                    ? T("左键拖动环视 · WASD 移动 · Q/E 升降 · Esc 退出")
+                    : T("拖动旋转 · 右键平移 · 滚轮缩放");
                 break;
             case "path_warmup":
                 preparingPathFrame = message.GetProperty("active").GetBoolean();
@@ -288,7 +307,7 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception ex) when (ex is FormatException or IOException or System.Runtime.InteropServices.COMException)
         {
-            Report("无法显示渲染画面。", error: true);
+            Report(T("无法显示渲染画面。"), error: true);
         }
         finally
         {
@@ -316,7 +335,7 @@ public sealed partial class MainWindow : Window
             if (await picker.PickSingleFolderAsync() is { } folder)
             {
                 GameDirectory.Text = folder.Path;
-                GameSourceStatus.Text = "已选择文件夹，正在校验…";
+                GameSourceStatus.Text = T("已选择文件夹，正在校验…");
                 await LoadGameAsync(folder.Path);
             }
         }
@@ -345,47 +364,48 @@ public sealed partial class MainWindow : Window
         GameDirectory.Text = path;
         if (path.Length == 0)
         {
-            GameSourceStatus.Text = "请先选择或输入游戏文件夹。";
+            GameSourceStatus.Text = T("请先选择或输入游戏文件夹。");
             return;
         }
 
-        await RunAssetActionAsync("正在检查游戏目录…", async () =>
+        await RunAssetActionAsync(T("正在检查游戏目录…"), async () =>
         {
-            GameSourceStatus.Text = "正在校验档案并读取载具目录…";
+            GameSourceStatus.Text = T("正在校验档案并读取载具目录…");
             JsonElement response;
             try { response = await renderer.RequestAsync("load", new { path }); }
             catch (Exception ex) when (ex is IOException or InvalidOperationException)
             {
-                GameSourceStatus.Text = ex.Message;
+                GameSourceStatus.Text = Diagnostic(ex.Message);
                 throw;
             }
             GameDirectory.Text = response.GetProperty("game").GetString() ?? path;
-            GameSourceStatus.Text = "三个档案均通过校验，载具目录已载入。";
+            loadedGame = GameDirectory.Text;
+            GameSourceStatus.Text = T("三个档案均通过校验，载具目录已载入。");
             vehicles = response.GetProperty("vehicles").Deserialize<List<Vehicle>>(JsonOptions) ?? [];
             selected = null;
             displayed = null;
             ResetPaintControls();
-            ViewTitle.Text = "白色摄影棚";
-            ViewSubtitle.Text = "选择载具即可预览";
+            ViewTitle.Text = T("白色摄影棚");
+            ViewSubtitle.Text = T("选择载具即可预览");
             MeshDetails.Text = "";
             Factory.Items.Clear();
             partChoices.Clear();
             PartsPanel.Children.Clear();
             partsLoaded = false;
-            SourceSummary.Text = "Xbox RPF9 · 本地只读";
+            SourceSummary.Text = T("Xbox RPF9 · 本地只读");
             ToolTipService.SetToolTip(SourceSummary, response.GetProperty("game").GetString());
             VehicleInfo.Text = "";
             PerformancePanel.Children.Clear();
             CatalogNote.Text = response.GetProperty("unnamed").GetInt32() is var unnamed && unnamed > 0
-                ? $"另有 {unnamed} 条记录未恢复名称。"
-                : "所有资源均来自本机。";
+                ? F("另有 {0} 条记录未恢复名称。", unnamed)
+                : T("所有资源均来自本机。");
             populating = true;
             Search.Text = "";
-            Category.ItemsSource = new[] { "全部类别" }.Concat(vehicles.Select(v => v.Category).Distinct().Order()).ToArray();
+            Category.ItemsSource = new[] { T("全部类别") }.Concat(vehicles.Select(v => v.DisplayCategory).Distinct().Order()).ToArray();
             Category.SelectedIndex = 0;
             populating = false;
             RefreshVehicles();
-            if ((vehicles.FirstOrDefault(v => v.Id == "comet7") ?? vehicles.FirstOrDefault()) is { } first)
+            if ((vehicles.FirstOrDefault(v => v.Id == initialModel) ?? vehicles.FirstOrDefault(v => v.Id == "comet7") ?? vehicles.FirstOrDefault()) is { } first)
             {
                 SelectVehicle(first);
                 await LoadPartsAndRenderAsync(first, 0);
@@ -403,9 +423,9 @@ public sealed partial class MainWindow : Window
         var query = Search.Text.Trim();
         var category = Category.SelectedIndex > 0 ? Category.SelectedItem as string : null;
         var filtered = vehicles.Where(v =>
-            (category is null || v.Category == category) &&
+            (category is null || v.DisplayCategory == category) &&
             (query.Length == 0 || $"{v.Name} {v.OriginalName} {v.Make} {v.EnglishName} {v.EnglishMake} {v.Id}".Contains(query, StringComparison.OrdinalIgnoreCase)))
-            .OrderBy(v => v.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+            .OrderBy(v => v.DisplayName, StringComparer.CurrentCultureIgnoreCase).ToList();
         populating = true;
         VehicleList.ItemsSource = filtered;
         VehicleList.SelectedItem = selected;
@@ -418,7 +438,7 @@ public sealed partial class MainWindow : Window
         if (populating || busy || VehicleList.SelectedItem is not Vehicle vehicle || vehicle == selected)
             return;
         SelectVehicle(vehicle);
-        await RunAssetActionAsync("正在读取配置和改装配件…", () => LoadPartsAndRenderAsync(vehicle, 0));
+        await RunAssetActionAsync(T("正在读取配置和改装配件…"), () => LoadPartsAndRenderAsync(vehicle, 0));
     }
 
     private void SelectVehicle(Vehicle vehicle)
@@ -428,18 +448,18 @@ public sealed partial class MainWindow : Window
         ResetPaintControls();
         populating = true;
         Search.Text = "";
-        Category.SelectedItem = vehicle.Category;
+        Category.SelectedItem = vehicle.DisplayCategory;
         Factory.Items.Clear();
         for (var i = 0; i < vehicle.Configurations.Count; i++)
         {
             var configuration = vehicle.Configurations[i];
             var hex = configuration.Color;
-            var source = configuration.ColorSource switch { "palette" => "（调色板）", "neutral" => "（预览底色）", _ => "" };
-            var label = $"配置 {i + 1:00}" + (string.IsNullOrEmpty(hex) ? "" : $" · {hex}{source}");
+            var source = configuration.ColorSource switch { "palette" => T("（调色板）"), "neutral" => T("（预览底色）"), _ => "" };
+            var label = F("配置 {0:00}", i + 1) + (string.IsNullOrEmpty(hex) ? "" : $" · {hex}{source}");
             Factory.Items.Add(new FactoryEntry(label, ColorSwatchBrush(hex)));
         }
         if (Factory.Items.Count == 0)
-            Factory.Items.Add(new FactoryEntry("基础模型", null));
+            Factory.Items.Add(new FactoryEntry(T("基础模型"), null));
         Factory.SelectedIndex = 0;
         populating = false;
         RefreshVehicles();
@@ -450,8 +470,8 @@ public sealed partial class MainWindow : Window
         partsLoaded = false;
         ReadParts.Visibility = Visibility.Collapsed;
         PartsNote.Text = vehicle.Configurations.Count == 0
-            ? "此车型没有可组装的原厂配置。"
-            : "正在读取可用配件…";
+            ? T("此车型没有可组装的原厂配置。")
+            : T("正在读取可用配件…");
         StudioMotion.Enter(VehicleOptions, new Vector3(0, 9, 0), 175);
     }
 
@@ -459,24 +479,24 @@ public sealed partial class MainWindow : Window
     {
         var data = new List<string>();
         if (vehicle.Drive is { Length: > 0 } drive)
-            data.Add(drive);
+            data.Add(T(drive));
         if (vehicle.Gears is > 0)
-            data.Add($"{vehicle.Gears} 速");
+            data.Add(F("{0} 速", vehicle.Gears));
         if (vehicle.Mass is > 0)
             data.Add($"{vehicle.Mass:N0} kg");
         if (vehicle.RoadRating.HasValue)
-            data.Add($"公路评级 {vehicle.RoadRating}");
+            data.Add(F("公路评级 {0}", vehicle.RoadRating));
         if (vehicle.DirtRating.HasValue)
-            data.Add($"越野评级 {vehicle.DirtRating}");
-        VehicleInfo.Text = data.Count == 0 ? "暂无本地车辆数据" : string.Join(" · ", data);
+            data.Add(F("越野评级 {0}", vehicle.DirtRating));
+        VehicleInfo.Text = data.Count == 0 ? T("暂无本地车辆数据") : string.Join(" · ", data);
         PerformancePanel.Children.Clear();
         var ratings = new (string Name, double? Value)[]
         {
-            ("速度", vehicle.Speed),
-            ("加速", vehicle.Acceleration),
-            ("柏油路操控性", vehicle.RoadHandling),
-            ("越野操控性", vehicle.OffroadHandling),
-            ("强度", vehicle.Strength)
+            (T("速度"), vehicle.Speed),
+            (T("加速"), vehicle.Acceleration),
+            (T("柏油路操控性"), vehicle.RoadHandling),
+            (T("越野操控性"), vehicle.OffroadHandling),
+            (T("强度"), vehicle.Strength)
         };
         foreach (var (name, value) in ratings)
         {
@@ -495,7 +515,7 @@ public sealed partial class MainWindow : Window
         if (populating || busy || selected is not { } vehicle || Factory.SelectedIndex < 0)
             return;
         int index = Factory.SelectedIndex;
-        await RunAssetActionAsync("正在加载原厂配置和改装配件…", () => LoadPartsAndRenderAsync(vehicle, index));
+        await RunAssetActionAsync(T("正在加载原厂配置和改装配件…"), () => LoadPartsAndRenderAsync(vehicle, index));
     }
 
     private async Task LoadPartsAndRenderAsync(Vehicle vehicle, int config)
@@ -507,7 +527,7 @@ public sealed partial class MainWindow : Window
 
     private async Task LoadPartsForConfigAsync(Vehicle vehicle, int config)
     {
-        PartsNote.Text = "正在读取可用配件…";
+        PartsNote.Text = T("正在读取可用配件…");
         partChoices.Clear();
         PartsPanel.Children.Clear();
         partsLoaded = false;
@@ -518,7 +538,7 @@ public sealed partial class MainWindow : Window
         }
         catch (InvalidOperationException ex)
         {
-            PartsNote.Text = "读取配件失败 · " + ex.Message;
+            PartsNote.Text = T("读取配件失败 · ") + Diagnostic(ex.Message);
             ReadParts.Visibility = Visibility.Visible;
         }
     }
@@ -528,7 +548,7 @@ public sealed partial class MainWindow : Window
         if (selected is not { } vehicle || Factory.SelectedIndex < 0)
             return;
         int config = Factory.SelectedIndex;
-        await RunAssetActionAsync("正在读取可用配件…", () => LoadPartsForConfigAsync(vehicle, config));
+        await RunAssetActionAsync(T("正在读取可用配件…"), () => LoadPartsForConfigAsync(vehicle, config));
     }
 
     private async Task<List<PartOption>> GetPartsAsync(Vehicle vehicle)
@@ -542,7 +562,7 @@ public sealed partial class MainWindow : Window
         partChoices.Clear();
         PartsPanel.Children.Clear();
         partsLoaded = true;
-        PartsNote.Text = parts.Count > 0 ? "选中配件后自动应用到预览。" : "未找到有可解析模型的配件。";
+        PartsNote.Text = parts.Count > 0 ? T("选中配件后自动应用到预览。") : T("未找到有可解析模型的配件。");
         foreach (var group in parts.GroupBy(part => part.Slot))
         {
             var slot = PartLabels.Slot(group.First().SlotName, group.Key);
@@ -550,7 +570,7 @@ public sealed partial class MainWindow : Window
             var combo = new PartPicker { HorizontalAlignment = HorizontalAlignment.Stretch };
             var options = group.Select((part, index) => (Part: part, Title: PartLabels.Option(slot, part.Label, index + 1))).ToArray();
             var stock = options.FirstOrDefault(option => option.Part.StockConfigs?.Contains(config) == true);
-            var stockItem = new ComboBoxItem { Content = stock.Part is null ? "沿用原厂配置" : $"原厂 · {stock.Title}", Tag = "" };
+            var stockItem = new ComboBoxItem { Content = stock.Part is null ? T("沿用原厂配置") : F("原厂 · {0}", stock.Title), Tag = "" };
             if (stock.Part is not null)
                 ToolTipService.SetToolTip(stockItem, $"{stock.Part.Label} · {stock.Part.Id}");
             combo.Items.Add(stockItem);
@@ -649,17 +669,17 @@ public sealed partial class MainWindow : Window
         var baseModel = reply.GetProperty("base").GetBoolean();
         paintable = reply.GetProperty("paintable").GetBoolean();
         displayed = baseModel ? null : new BuildCode(vehicle.Id, config, parts.Order(StringComparer.Ordinal).ToArray());
-        ViewTitle.Text = vehicle.Name;
-        ViewSubtitle.Text = $"{vehicle.Category}  ·  {vehicle.Subtitle}";
+        ViewTitle.Text = vehicle.DisplayName;
+        ViewSubtitle.Text = $"{vehicle.DisplayCategory}  ·  {vehicle.Subtitle}";
         if (!applyingParts)
             StudioMotion.Enter(VehicleHeading, new Vector3(0, 7, 0), 175);
-        MeshDetails.Text = $"{reply.GetProperty("meshes").GetInt32()} 组网格 · {size[0]:F2} × {size[1]:F2} × {size[2]:F2} m";
+        MeshDetails.Text = F("{0} 组网格 · {1:F2} × {2:F2} × {3:F2} m", reply.GetProperty("meshes").GetInt32(), size[0], size[1], size[2]);
         var requestedWarnings = reply.GetProperty("requestedWarnings").EnumerateArray()
-            .Select(warning => warning.GetString()).OfType<string>().ToArray();
+            .Select(warning => warning.GetString()).OfType<string>().Select(Diagnostic).ToArray();
         ToolTipService.SetToolTip(MeshDetails, requestedWarnings.Length == 0 ? null : string.Join("\n", requestedWarnings));
-        Report((baseModel ? "已载入基础模型" : "已载入整车预览")
-            + (requestedWarnings.Length > 0 ? $" · 所选配件有 {requestedWarnings.Length} 个组件未装上" :
-                issues > 0 ? $" · SixNG 报告 {issues} 项配件或贴图警告" : ""));
+        Report((baseModel ? T("已载入基础模型") : T("已载入整车预览"))
+            + (requestedWarnings.Length > 0 ? F(" · 所选配件有 {0} 个组件未装上", requestedWarnings.Length) :
+                issues > 0 ? F(" · SixNG 报告 {0} 项配件或贴图警告", issues) : ""));
     }
 
     private void UpdatePreviewLoading()
@@ -670,7 +690,7 @@ public sealed partial class MainWindow : Window
         PreviewSpinner.IsActive = loading && StudioMotion.Enabled;
         if (loading)
         {
-            PreviewLoadingText.Text = applyingParts ? "正在应用配件…" : assemblingVehicle ? "正在组装载具预览…" : "正在准备路径追踪画面…";
+            PreviewLoadingText.Text = applyingParts ? T("正在应用配件…") : assemblingVehicle ? T("正在组装载具预览…") : T("正在准备路径追踪画面…");
             if (!wasVisible)
                 StudioMotion.Enter(PreviewLoading, new Vector3(0, -6, 0), 160);
         }
@@ -694,7 +714,7 @@ public sealed partial class MainWindow : Window
         var color = PaintColor.Text.Trim();
         if (PaintColor.IsEnabled && color.Length > 0 && !ColorPattern.IsMatch(color))
         {
-            Report("漆色请输入 #RRGGBB，留空使用原车颜色。", error: true);
+            Report(T("漆色请输入 #RRGGBB，留空使用原车颜色。"), error: true);
             return Task.CompletedTask;
         }
         return PostAsync("paint", new { model = current.Id, finish = PaintFinish.SelectedIndex, color });
@@ -709,33 +729,33 @@ public sealed partial class MainWindow : Window
         var package = new DataPackage();
         package.SetText("VI1." + text);
         Clipboard.SetContent(package);
-        Report("已复制当前预览的改车码。");
+        Report(T("已复制当前预览的改车码。"));
     }
 
     private async void ImportClicked(object sender, RoutedEventArgs args)
     {
-        var box = new TextBox { PlaceholderText = "粘贴 VI1. 开头的改车码", MaxLength = 4096, AcceptsReturn = true };
+        var box = new TextBox { PlaceholderText = T("粘贴 VI1. 开头的改车码"), MaxLength = 4096, AcceptsReturn = true };
         var editor = new ContentDialog
         {
-            Title = "导入改车码", PrimaryButtonText = "应用", CloseButtonText = "取消",
+            Title = T("导入改车码"), PrimaryButtonText = T("应用"), CloseButtonText = T("取消"),
             DefaultButton = ContentDialogButton.Primary, XamlRoot = Shell.XamlRoot, Content = box
         };
         ContentDialogResult answer;
         answer = await editor.ShowAsync();
         if (answer != ContentDialogResult.Primary)
             return;
-        await RunAssetActionAsync("正在核对改车码…", async () =>
+        await RunAssetActionAsync(T("正在核对改车码…"), async () =>
         {
             var code = ParseCode(box.Text);
             var vehicle = vehicles.FirstOrDefault(v => v.Id == code.Model && code.Config < v.Configurations.Count)
-                ?? throw new InvalidOperationException("本地目录中找不到这个车型或配置。");
+                ?? throw new InvalidOperationException(T("本地目录中找不到这个车型或配置。"));
             List<PartOption> options = code.Parts.Length > 0 ? await GetPartsAsync(vehicle) : [];
             var slots = new HashSet<string>();
             foreach (var pick in code.Parts)
             {
                 var option = options.FirstOrDefault(part => part.Id == pick);
                 if (option is null || !slots.Add(option.Slot))
-                    throw new InvalidOperationException("改车码中有不可用或占用同一安装槽的配件。");
+                    throw new InvalidOperationException(T("改车码中有不可用或占用同一安装槽的配件。"));
             }
             SelectVehicle(vehicle);
             Factory.SelectedIndex = code.Config;
@@ -744,7 +764,7 @@ public sealed partial class MainWindow : Window
             else
                 ShowParts(options, code.Parts, code.Config);
             await RenderAsync(code.Config, code.Parts);
-            Report("已应用改车码。");
+            Report(T("已应用改车码。"));
         });
     }
 
@@ -766,7 +786,7 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception ex) when (ex is FormatException or JsonException)
         {
-            throw new InvalidOperationException("改车码格式无效。", ex);
+            throw new InvalidOperationException(T("改车码格式无效。"), ex);
         }
     }
 
@@ -844,7 +864,7 @@ public sealed partial class MainWindow : Window
     {
         var methods = new List<AaChoice>
         {
-            new(AaMethod.None, "关闭"),
+            new(AaMethod.None, T("关闭")),
             new(AaMethod.Fxaa, "FXAA"),
             new(AaMethod.Smaa, "SMAA"),
             new(AaMethod.Taa, "TAA"),
@@ -868,24 +888,24 @@ public sealed partial class MainWindow : Window
         aaTiers = method switch
         {
             AaMethod.Dlss => [
-                new("DLAA · 原生 (100%)", 8, 1.0),
-                new("质量 (67%)", 8, 0.67),
-                new("平衡 (58%)", 8, 0.58),
-                new("性能 (50%)", 8, 0.50)
+                new(T("DLAA · 原生 (100%)"), 8, 1.0),
+                new(T("质量 (67%)"), 8, 0.67),
+                new(T("平衡 (58%)"), 8, 0.58),
+                new(T("性能 (50%)"), 8, 0.50)
             ],
             AaMethod.Fsr2 => [
-                new("原生 AA (100%)", 7, 1.0),
-                new("超高质量 (77%)", 7, 0.77),
-                new("质量 (67%)", 7, 0.67),
-                new("平衡 (59%)", 7, 0.59),
-                new("性能 (50%)", 7, 0.50)
+                new(T("原生 AA (100%)"), 7, 1.0),
+                new(T("超高质量 (77%)"), 7, 0.77),
+                new(T("质量 (67%)"), 7, 0.67),
+                new(T("平衡 (59%)"), 7, 0.59),
+                new(T("性能 (50%)"), 7, 0.50)
             ],
             AaMethod.Msaa => [
                 new("2×", 4, 1.0),
                 new("4×", 5, 1.0),
                 new("8×", 6, 1.0)
             ],
-            _ => [new("原生 (100%)", (int)method, 1.0)]
+            _ => [new(T("原生 (100%)"), (int)method, 1.0)]
         };
         AaQuality.ItemsSource = aaTiers.Select(tier => tier.Label).ToArray();
         AaQuality.IsEnabled = aaTiers.Count > 1;
@@ -941,7 +961,7 @@ public sealed partial class MainWindow : Window
         graphicsRevision++;
         UpdateGraphicsControls();
         ApplyGraphicsButton.IsEnabled = !applyingGraphics;
-        GraphicsStatus.Text = "有未应用的画质设置。";
+        GraphicsStatus.Text = T("有未应用的画质设置。");
     }
 
     private void ResetGraphics(object sender, RoutedEventArgs args)
@@ -960,7 +980,7 @@ public sealed partial class MainWindow : Window
             return;
         applyingGraphics = true;
         ApplyGraphicsButton.IsEnabled = false;
-        GraphicsStatus.Text = "正在应用画质…";
+        GraphicsStatus.Text = T("正在应用画质…");
         try
         {
             await ApplyGraphicsAsync(save: !safeMode);
@@ -969,7 +989,7 @@ public sealed partial class MainWindow : Window
         {
             if (!closing)
             {
-                GraphicsStatus.Text = "画质未确认应用。";
+                GraphicsStatus.Text = T("画质未确认应用。");
                 ApplyGraphicsButton.IsEnabled = connected;
                 Report(ex.Message, error: true);
             }
@@ -987,11 +1007,11 @@ public sealed partial class MainWindow : Window
         RayReconstruction.IsEnabled = path && rayReconstruction
             && aaMethods.ElementAtOrDefault(Antialias.SelectedIndex)?.Method == AaMethod.Dlss;
         Ssr.IsEnabled = Ao.IsEnabled = Ssil.IsEnabled = !path;
-        var pathStatus = !pathAvailable ? "当前运行时或 GPU 不支持路径追踪。" :
+        var pathStatus = !pathAvailable ? T("当前运行时或 GPU 不支持路径追踪。") :
             path && aaMethods.ElementAtOrDefault(Antialias.SelectedIndex)?.Method == AaMethod.Msaa
-                ? "MSAA 只处理光栅几何，当前路径追踪画面不会使用它。" : "";
+                ? T("MSAA 只处理光栅几何，当前路径追踪画面不会使用它。") : "";
         var dlssStatus = dlssAvailable ? "" : adapterVendor.Equals("AMD", StringComparison.OrdinalIgnoreCase)
-            ? "当前渲染显卡为 AMD，可选择 FSR 2.2。" : "当前渲染显卡或运行时不支持 NVIDIA DLSS。";
+            ? T("当前渲染显卡为 AMD，可选择 FSR 2.2。") : T("当前渲染显卡或运行时不支持 NVIDIA DLSS。");
         RayStatus.Text = $"{pathStatus} {dlssStatus}".Trim();
     }
 
@@ -1029,13 +1049,13 @@ public sealed partial class MainWindow : Window
         {
             double scale = reply.GetProperty("scale").GetDouble();
             bool capped = reply.GetProperty("fps_limit").GetInt32() != 0;
-            string mode = actualPath ? (reply.GetProperty("ray_reconstruction").GetBoolean() ? "全路径追踪 · 光线重建" : "全路径追踪") : "纯光栅";
+            string mode = actualPath ? (reply.GetProperty("ray_reconstruction").GetBoolean() ? T("全路径追踪 · 光线重建") : T("全路径追踪")) : T("纯光栅");
             string methodLabel = method.Method is AaMethod.Dlss or AaMethod.Fsr2 or AaMethod.Msaa
                 ? $"{method.Label} · {tier.Label.Split('(', 2)[0].TrimEnd()}" : method.Label;
             if (reply.GetProperty("aa").GetInt32() != tier.EngineMode)
-                methodLabel += "（当前不生效）";
-            GraphicsStatus.Text = $"已应用 {mode} · {methodLabel} · 3D 比例设定 {scale:P0} · "
-                + (capped ? "预览上限 30 FPS" : "预览限帧已关闭");
+                methodLabel += T("（当前不生效）");
+            GraphicsStatus.Text = F("已应用 {0} · {1} · 3D 比例设定 {2:P0} · ", mode, methodLabel, scale)
+                + (capped ? T("预览上限 30 FPS") : T("预览限帧已关闭"));
         }
     }
 
@@ -1046,17 +1066,17 @@ public sealed partial class MainWindow : Window
                 ? (object)pair.Value.GetString()! : pair.Value.GetDouble());
         foreach (var pair in lightDefaults)
             lighting[pair.Key] = pair.Value;
-        AddLightSlider("主光强度", "key", 0, 4, .05);
-        AddLightSlider("主光方位（°）", "azimuth", -180, 180, 1);
-        AddLightSlider("主光高度（°）", "elevation", 15, 85, 1);
-        AddLightSlider("主光角直径（°）", "size", 0, 40, .5);
-        AddLightSlider("主光高光", "specular", 0, .5, .005);
-        AddLightSlider("顶灯强度", "fill", 0, 1.5, .01);
-        AddLightSlider("环境光", "ambient", 0, 1.5, .02);
-        AddLightSlider("曝光", "exposure", .35, 2.7, .025);
-        AddLightSlider("地面粗糙度", "floor_roughness", .08, .90, .01);
-        AddLightColor("主光色", "light_color");
-        AddLightColor("背景色", "background_color");
+        AddLightSlider(T("主光强度"), "key", 0, 4, .05);
+        AddLightSlider(T("主光方位（°）"), "azimuth", -180, 180, 1);
+        AddLightSlider(T("主光高度（°）"), "elevation", 15, 85, 1);
+        AddLightSlider(T("主光角直径（°）"), "size", 0, 40, .5);
+        AddLightSlider(T("主光高光"), "specular", 0, .5, .005);
+        AddLightSlider(T("顶灯强度"), "fill", 0, 1.5, .01);
+        AddLightSlider(T("环境光"), "ambient", 0, 1.5, .02);
+        AddLightSlider(T("曝光"), "exposure", .35, 2.7, .025);
+        AddLightSlider(T("地面粗糙度"), "floor_roughness", .08, .90, .01);
+        AddLightColor(T("主光色"), "light_color");
+        AddLightColor(T("背景色"), "background_color");
         var savedColor = preferences.FloorColor;
         SetFloorPicker(ParseHexColor(savedColor) is not null ? savedColor : (string)lightDefaults["floor_color"]);
         if (ParseHexColor(preferences.BackgroundColor) is not null)
@@ -1094,7 +1114,7 @@ public sealed partial class MainWindow : Window
     private void ShowFloorColor(Windows.UI.Color color)
     {
         var hex = $"#{color.R:X2}{color.G:X2}{color.B:X2}";
-        FloorColorLabel.Text = "地面颜色 · " + hex;
+        FloorColorLabel.Text = T("地面颜色") + " · " + hex;
         FloorHexInput.Text = hex;
         UpdateColorSwatch(FloorColorSwatch, hex);
         UpdateColorSwatch(FloorHexSwatch, hex);
@@ -1244,13 +1264,19 @@ public sealed partial class MainWindow : Window
         (open ? SettingsBackButton : SettingsButton).Focus(FocusState.Programmatic);
     }
 
-    private void LoadPreferences()
+    private Preferences ReadPreferences()
     {
         if (File.Exists(preferencePath))
         {
-            try { preferences = JsonSerializer.Deserialize<Preferences>(File.ReadAllText(preferencePath!), JsonOptions) ?? new(); }
+            try { return JsonSerializer.Deserialize<Preferences>(File.ReadAllText(preferencePath!), JsonOptions) ?? new(); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException) { }
         }
+        return new();
+    }
+
+    private void LoadPreferenceControls()
+    {
+        LanguageChoice.SelectedIndex = UiText.English ? 1 : 0;
         ThemeChoice.SelectedIndex = Math.Clamp(preferences.Theme, 0, 2);
         MicaSwitch.IsOn = preferences.Mica;
         LampSwitch.IsOn = preferences.Lamps;
@@ -1259,18 +1285,55 @@ public sealed partial class MainWindow : Window
         ApplyAppearance();
     }
 
-    private void SavePreferences()
+    private bool SavePreferences()
     {
         if (preferencePath is null)
-            return;
+            return false;
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(preferencePath)!);
             var staging = preferencePath + ".tmp";
             File.WriteAllText(staging, JsonSerializer.Serialize(preferences, JsonOptions));
             File.Move(staging, preferencePath, overwrite: true);
+            return true;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return false; }
+    }
+
+    private void LanguageChanged(object sender, SelectionChangedEventArgs args) =>
+        ApplyLanguage.Visibility = LanguageChoice.SelectedIndex >= 0 && (LanguageChoice.SelectedIndex == 1) != UiText.English
+            ? Visibility.Visible : Visibility.Collapsed;
+
+    private async void ApplyLanguageClicked(object sender, RoutedEventArgs args)
+    {
+        if (closing || busy || applyingParts || applyingGraphics)
+            return;
+        var previous = preferences;
+        preferences = preferences with { Language = LanguageChoice.SelectedIndex == 1 ? "en" : "zh-CN" };
+        if (!SavePreferences())
+        {
+            preferences = previous;
+            Report(T("无法保存语言设置。"), error: true);
+            return;
+        }
+
+        closing = true;
+        fpsTimer.Stop();
+        ApplyLanguage.IsEnabled = false;
+        Report(T("正在切换界面语言…"));
+        try
+        {
+            await renderer.CloseAsync();
+            ((App)Application.Current).OpenWindow(loadedGame, selected?.Id, settings: true);
+            Close();
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            closing = false;
+            connected = false;
+            UpdateAssetControls();
+            Report(T("切换语言时无法重新打开窗口。") + " " + ex.Message, error: true);
+        }
     }
 
     private void ApplyAppearance()
@@ -1366,6 +1429,7 @@ public sealed partial class MainWindow : Window
     {
         OpenFolder.IsEnabled = BrowseGameDirectory.IsEnabled = CheckGameDirectory.IsEnabled = connected && !busy;
         GameDirectory.IsEnabled = connected && !busy;
+        ApplyLanguage.IsEnabled = !busy && !applyingParts && !closing;
         VehicleList.IsEnabled = connected && !busy;
         Factory.IsEnabled = !busy && selected?.Configurations.Count > 0;
         PaintFinish.IsEnabled = connected && !busy && paintable;
@@ -1379,6 +1443,7 @@ public sealed partial class MainWindow : Window
 
     private void Report(string text, double progress = -1, bool error = false)
     {
+        text = Diagnostic(text);
         Status.Text = text;
         if (error)
             Status.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.IndianRed);
@@ -1394,7 +1459,16 @@ public sealed partial class MainWindow : Window
         double? Speed, double? Acceleration, double? RoadHandling, double? OffroadHandling,
         double? Strength, int? RoadRating, int? DirtRating, string? OriginalName)
     {
-        public string Subtitle => string.IsNullOrEmpty(Make) ? Id : $"{Make} · {Id}";
+        public string DisplayName => UiText.English && !string.IsNullOrWhiteSpace(EnglishName) ? EnglishName : Name;
+        public string DisplayCategory => T(Category);
+        public string Subtitle
+        {
+            get
+            {
+                var make = UiText.English ? EnglishMake : Make;
+                return string.IsNullOrEmpty(make) ? Id : $"{make} · {Id}";
+            }
+        }
     }
 
     public sealed record FactoryOption(string? Color, int Count, string? ColorSource);
@@ -1409,7 +1483,7 @@ public sealed partial class MainWindow : Window
     private sealed record AaChoice(AaMethod Method, string Label);
     private sealed record AaTier(string Label, int EngineMode, double Scale);
     private sealed record Preferences(int Theme = 0, bool Mica = true, bool Lamps = true, bool Grid = false,
-        string FloorColor = "", GraphicsPreferences? Graphics = null, string BackgroundColor = "");
+        string FloorColor = "", GraphicsPreferences? Graphics = null, string BackgroundColor = "", string Language = "zh-CN");
     private sealed record GraphicsPreferences(bool Path = false, int PathQuality = 2,
         AaMethod RasterAa = AaMethod.Taa, AaMethod PathAa = AaMethod.Dlss, bool Reflections = true,
         bool Occlusion = true, bool IndirectLight = true, bool Bloom = true, SavedTier[]? Tiers = null,

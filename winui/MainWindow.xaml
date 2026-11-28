@@ -33,19 +33,19 @@
                        AutomationProperties.Name="Leonida Customs" />
                 <Button x:Name="SettingsBackButton" Width="40" Height="40" Padding="0" Visibility="Collapsed"
                         HorizontalAlignment="Left" VerticalAlignment="Center"
-                        AutomationProperties.Name="返回" ToolTipService.ToolTip="返回"
+                        AutomationProperties.Name="{x:Bind TextFor('返回')}" ToolTipService.ToolTip="{x:Bind TextFor('返回')}"
                         Click="SettingsBackClicked">
                     <SymbolIcon Symbol="Back" />
                 </Button>
             </Grid>
             <StackPanel Grid.Column="1" VerticalAlignment="Center">
                 <TextBlock Text="Leonida Customs" FontSize="23" FontWeight="SemiBold" />
-                <TextBlock x:Name="SourceSummary" Text="等待连接本地游戏目录" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" />
+                <TextBlock x:Name="SourceSummary" Text="{x:Bind TextFor('等待连接本地游戏目录')}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" />
             </StackPanel>
             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                <Button x:Name="OpenFolder" Click="OpenFolderClicked" Content="打开游戏目录" />
-                <Button x:Name="SettingsButton" Click="OpenSettingsClicked" Content="设置" />
-                <Button Content="帮助" Click="OpenHelp" />
+                <Button x:Name="OpenFolder" Click="OpenFolderClicked" Content="{x:Bind TextFor('打开游戏目录')}" />
+                <Button x:Name="SettingsButton" Click="OpenSettingsClicked" Content="{x:Bind TextFor('设置')}" />
+                <Button Content="{x:Bind TextFor('帮助')}" Click="OpenHelp" />
             </StackPanel>
         </Grid>
 
@@ -66,17 +66,17 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <Grid>
-                        <TextBlock Text="载具库" FontSize="16" FontWeight="SemiBold" />
+                        <TextBlock Text="{x:Bind TextFor('载具库')}" FontSize="16" FontWeight="SemiBold" />
                         <TextBlock x:Name="VehicleCount" HorizontalAlignment="Right" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="0" />
                     </Grid>
-                    <TextBox Grid.Row="1" x:Name="Search" PlaceholderText="搜索车型、厂牌或 ID" TextChanged="SearchChanged" />
+                    <TextBox Grid.Row="1" x:Name="Search" PlaceholderText="{x:Bind TextFor('搜索车型、厂牌或 ID')}" TextChanged="SearchChanged" />
                     <ComboBox Grid.Row="2" x:Name="Category" HorizontalAlignment="Stretch"
-                              SelectionChanged="FilterChanged" AutomationProperties.Name="载具类别" />
+                              SelectionChanged="FilterChanged" AutomationProperties.Name="{x:Bind TextFor('载具类别')}" />
                     <ListView Grid.Row="3" x:Name="VehicleList" SelectionMode="Single" SelectionChanged="VehicleSelected">
                         <ListView.ItemTemplate>
                             <DataTemplate>
                                 <StackPanel Margin="0,3">
-                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                                     <TextBlock Text="{Binding Subtitle}" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />
                                 </StackPanel>
                             </DataTemplate>
@@ -100,12 +100,12 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel x:Name="VehicleHeading">
-                            <TextBlock x:Name="ViewTitle" Text="白色摄影棚" FontSize="21" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                            <TextBlock x:Name="ViewSubtitle" Text="选择载具即可预览" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" TextTrimming="CharacterEllipsis" />
+                            <TextBlock x:Name="ViewTitle" Text="{x:Bind TextFor('白色摄影棚')}" FontSize="21" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                            <TextBlock x:Name="ViewSubtitle" Text="{x:Bind TextFor('选择载具即可预览')}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" TextTrimming="CharacterEllipsis" />
                         </StackPanel>
                         <TextBlock x:Name="FpsLabel" Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="11"
-                                   ToolTipService.ToolTip="WinUI 视口每秒更新的画面数" />
+                                   ToolTipService.ToolTip="{x:Bind TextFor('WinUI 视口每秒更新的画面数')}" />
                     </Grid>
                     <Grid Grid.Row="1" x:Name="PreviewSurface" Margin="1,0" Background="{ThemeResource ControlFillColorSecondaryBrush}">
                         <Image x:Name="PreviewImage" Stretch="Uniform" IsHitTestVisible="False" />
@@ -126,14 +126,14 @@
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
                         <StackPanel Orientation="Horizontal" Spacing="5" x:Name="CameraToolbar">
-                            <Button Content="重置" Click="ResetCamera" ToolTipService.ToolTip="重置视角" />
-                            <ToggleButton x:Name="Rotate" Content="旋转" Click="ToggleCamera" Tag="rotate" />
-                            <ToggleButton x:Name="Fly" Content="自由视角" Click="ToggleCamera" Tag="free" />
-                            <Button x:Name="ScreenshotButton" Content="保存截图" Click="SaveScreenshot" IsEnabled="False" />
+                            <Button Content="{x:Bind TextFor('重置')}" Click="ResetCamera" ToolTipService.ToolTip="{x:Bind TextFor('重置视角')}" />
+                            <ToggleButton x:Name="Rotate" Content="{x:Bind TextFor('旋转')}" Click="ToggleCamera" Tag="rotate" />
+                            <ToggleButton x:Name="Fly" Content="{x:Bind TextFor('自由视角')}" Click="ToggleCamera" Tag="free" />
+                            <Button x:Name="ScreenshotButton" Content="{x:Bind TextFor('保存截图')}" Click="SaveScreenshot" IsEnabled="False" />
                         </StackPanel>
                         <TextBlock Grid.Column="1" x:Name="CameraHint" HorizontalAlignment="Right" VerticalAlignment="Center"
                                    TextTrimming="CharacterEllipsis" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   Text="拖动旋转 · 右键平移 · 滚轮缩放" />
+                                   Text="{x:Bind TextFor('拖动旋转 · 右键平移 · 滚轮缩放')}" />
                     </Grid>
                 </Grid>
             </Border>
@@ -146,9 +146,9 @@
                     </Grid.RowDefinitions>
                     <ScrollViewer HorizontalScrollMode="Disabled">
                         <StackPanel Spacing="9" Padding="4,0,5,0">
-                            <TextBlock Text="原厂配置" FontWeight="SemiBold" />
+                            <TextBlock Text="{x:Bind TextFor('原厂配置')}" FontWeight="SemiBold" />
                             <ComboBox x:Name="Factory" HorizontalAlignment="Stretch"
-                                      AutomationProperties.Name="原厂配置" SelectionChanged="FactoryChanged">
+                                      AutomationProperties.Name="{x:Bind TextFor('原厂配置')}" SelectionChanged="FactoryChanged">
                                 <ComboBox.ItemTemplate>
                                     <DataTemplate>
                                         <StackPanel Orientation="Horizontal" Spacing="7">
@@ -159,31 +159,31 @@
                                     </DataTemplate>
                                 </ComboBox.ItemTemplate>
                             </ComboBox>
-                            <TextBlock Text="车辆数据" FontWeight="SemiBold" Margin="0,7,0,0" />
+                            <TextBlock Text="{x:Bind TextFor('车辆数据')}" FontWeight="SemiBold" Margin="0,7,0,0" />
                             <TextBlock x:Name="VehicleInfo" FontSize="12" TextWrapping="Wrap"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                             <StackPanel x:Name="PerformancePanel" Spacing="5" />
                             <Grid Margin="0,6,0,0">
-                                <TextBlock Text="改装配件" FontWeight="SemiBold" VerticalAlignment="Center" />
-                                <Button x:Name="ReadParts" Content="重试读取" Visibility="Collapsed" HorizontalAlignment="Right" Click="ReadPartsClicked" />
+                                <TextBlock Text="{x:Bind TextFor('改装配件')}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                <Button x:Name="ReadParts" Content="{x:Bind TextFor('重试读取')}" Visibility="Collapsed" HorizontalAlignment="Right" Click="ReadPartsClicked" />
                             </Grid>
-                            <TextBlock x:Name="PartsNote" Text="选择载具后可查看可用配件。" FontSize="12"
+                            <TextBlock x:Name="PartsNote" Text="{x:Bind TextFor('选择载具后可查看可用配件。')}" FontSize="12"
                                        TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            <Expander Header="车漆" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                            <Expander Header="{x:Bind TextFor('车漆')}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
                                 <StackPanel Spacing="8">
-                                    <local:PartPicker x:Name="PaintFinish" Header="车漆预览" HorizontalAlignment="Stretch"
+                                    <local:PartPicker x:Name="PaintFinish" Header="{x:Bind TextFor('车漆预览')}" HorizontalAlignment="Stretch"
                                               SelectedIndex="0" IsEnabled="False">
-                                        <x:String>原厂漆面</x:String>
-                                        <x:String>亮光实色</x:String>
-                                        <x:String>金属漆</x:String>
-                                        <x:String>哑光</x:String>
-                                        <x:String>珠光</x:String>
+                                        <ComboBoxItem Content="{x:Bind TextFor('原厂漆面')}" />
+                                        <ComboBoxItem Content="{x:Bind TextFor('亮光实色')}" />
+                                        <ComboBoxItem Content="{x:Bind TextFor('金属漆')}" />
+                                        <ComboBoxItem Content="{x:Bind TextFor('哑光')}" />
+                                        <ComboBoxItem Content="{x:Bind TextFor('珠光')}" />
                                     </local:PartPicker>
                                     <StackPanel Spacing="6">
-                                        <TextBlock Text="自定义漆色" />
+                                        <TextBlock Text="{x:Bind TextFor('自定义漆色')}" />
                                         <StackPanel Orientation="Horizontal" Spacing="7">
-                                            <TextBox x:Name="PaintColor" Width="158" PlaceholderText="原车颜色或 #RRGGBB"
-                                                     AutomationProperties.Name="自定义漆色" MaxLength="7" IsEnabled="False" />
+                                            <TextBox x:Name="PaintColor" Width="158" PlaceholderText="{x:Bind TextFor('原车颜色或 #RRGGBB')}"
+                                                     AutomationProperties.Name="{x:Bind TextFor('自定义漆色')}" MaxLength="7" IsEnabled="False" />
                                             <Border x:Name="PaintColorSwatch" Style="{StaticResource ColorSwatchStyle}" Visibility="Collapsed" />
                                         </StackPanel>
                                     </StackPanel>
@@ -198,8 +198,8 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <Button x:Name="CopyCode" Content="复制改车码" HorizontalAlignment="Stretch" Click="CopyClicked" />
-                            <Button x:Name="ImportCode" Grid.Column="1" Content="导入改车码" HorizontalAlignment="Stretch" Click="ImportClicked" />
+                            <Button x:Name="CopyCode" Content="{x:Bind TextFor('复制改车码')}" HorizontalAlignment="Stretch" Click="CopyClicked" />
+                            <Button x:Name="ImportCode" Grid.Column="1" Content="{x:Bind TextFor('导入改车码')}" HorizontalAlignment="Stretch" Click="ImportClicked" />
                         </Grid>
                     </StackPanel>
                 </Grid>
@@ -217,71 +217,78 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <TextBlock Text="设置" Grid.ColumnSpan="3" FontSize="28" FontWeight="SemiBold" Margin="2,7,0,0" />
+                <TextBlock Text="{x:Bind TextFor('设置')}" Grid.ColumnSpan="3" FontSize="28" FontWeight="SemiBold" Margin="2,7,0,0" />
                 <Border Grid.Row="1" Padding="15" CornerRadius="9" VerticalAlignment="Top"
                         Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
                     <StackPanel Spacing="10">
-                        <TextBlock Text="外观与预览" FontSize="17" FontWeight="SemiBold" />
-                        <ComboBox x:Name="ThemeChoice" Header="界面主题" HorizontalAlignment="Stretch" SelectionChanged="AppearanceChanged">
-                            <x:String>跟随系统</x:String>
-                            <x:String>浅色</x:String>
-                            <x:String>深色</x:String>
+                        <TextBlock Text="{x:Bind TextFor('外观与预览')}" FontSize="17" FontWeight="SemiBold" />
+                        <ComboBox x:Name="LanguageChoice" Header="{x:Bind TextFor('界面语言')}" HorizontalAlignment="Stretch"
+                                  SelectionChanged="LanguageChanged">
+                            <ComboBoxItem Content="简体中文" />
+                            <ComboBoxItem Content="English" />
                         </ComboBox>
-                        <ToggleSwitch x:Name="MicaSwitch" Header="云母背景（Mica）" Toggled="AppearanceChanged" />
-                        <ToggleSwitch x:Name="LampSwitch" Header="车灯" Toggled="PreviewPreferenceChanged" />
-                        <ToggleSwitch x:Name="GridLines" Header="地面网格" Toggled="PreviewPreferenceChanged" />
-                        <TextBox x:Name="GameDirectory" Header="游戏文件位置" PlaceholderText="包含 RPF 文件的文件夹"
+                        <Button x:Name="ApplyLanguage" Content="{x:Bind TextFor('应用语言')}" Click="ApplyLanguageClicked"
+                                Visibility="Collapsed" HorizontalAlignment="Stretch" />
+                        <ComboBox x:Name="ThemeChoice" Header="{x:Bind TextFor('界面主题')}" HorizontalAlignment="Stretch" SelectionChanged="AppearanceChanged">
+                            <ComboBoxItem Content="{x:Bind TextFor('跟随系统')}" />
+                            <ComboBoxItem Content="{x:Bind TextFor('浅色')}" />
+                            <ComboBoxItem Content="{x:Bind TextFor('深色')}" />
+                        </ComboBox>
+                        <ToggleSwitch OnContent="{x:Bind TextFor('开启')}" OffContent="{x:Bind TextFor('关闭')}" x:Name="MicaSwitch" Header="{x:Bind TextFor('云母背景（Mica）')}" Toggled="AppearanceChanged" />
+                        <ToggleSwitch OnContent="{x:Bind TextFor('开启')}" OffContent="{x:Bind TextFor('关闭')}" x:Name="LampSwitch" Header="{x:Bind TextFor('车灯')}" Toggled="PreviewPreferenceChanged" />
+                        <ToggleSwitch OnContent="{x:Bind TextFor('开启')}" OffContent="{x:Bind TextFor('关闭')}" x:Name="GridLines" Header="{x:Bind TextFor('地面网格')}" Toggled="PreviewPreferenceChanged" />
+                        <TextBox x:Name="GameDirectory" Header="{x:Bind TextFor('游戏文件位置')}" PlaceholderText="{x:Bind TextFor('包含 RPF 文件的文件夹')}"
                                  KeyDown="GameDirectoryKeyDown" />
                         <StackPanel Orientation="Horizontal" Spacing="7">
-                            <Button x:Name="BrowseGameDirectory" Content="选择文件夹" Click="OpenFolderClicked" />
-                            <Button x:Name="CheckGameDirectory" Content="校验并加载" Click="CheckGameDirectoryClicked" />
+                            <Button x:Name="BrowseGameDirectory" Content="{x:Bind TextFor('选择文件夹')}" Click="OpenFolderClicked" />
+                            <Button x:Name="CheckGameDirectory" Content="{x:Bind TextFor('校验并加载')}" Click="CheckGameDirectoryClicked" />
                         </StackPanel>
-                        <TextBlock x:Name="GameSourceStatus" Text="检查 levels.rpf、packs.rpf 和 data.rpf"
+                        <TextBlock x:Name="GameSourceStatus" Text="{x:Bind TextFor('检查 levels.rpf、packs.rpf 和 data.rpf')}"
                                    TextWrapping="Wrap" FontSize="12" AutomationProperties.LiveSetting="Polite" />
                     </StackPanel>
                 </Border>
                 <Border Grid.Row="1" Grid.Column="1" Padding="15" CornerRadius="9" VerticalAlignment="Top"
                         Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
                     <StackPanel x:Name="RenderPanel" Spacing="9">
-                        <TextBlock Text="渲染" FontSize="17" FontWeight="SemiBold" />
-                        <ToggleSwitch x:Name="PathTracingSwitch" Header="路径追踪" IsEnabled="False" Toggled="QualityChanged" />
-                        <ComboBox x:Name="PathQuality" Header="路径追踪画质" HorizontalAlignment="Stretch" SelectionChanged="QualityChanged">
-                            <x:String>性能 · 1 样本/像素</x:String>
-                            <x:String>平衡 · 2 样本/像素</x:String>
-                            <x:String>质量 · 4 样本/像素</x:String>
-                            <x:String>极致 · 8 样本/像素</x:String>
+                        <TextBlock Text="{x:Bind TextFor('渲染')}" FontSize="17" FontWeight="SemiBold" />
+                        <ToggleSwitch OnContent="{x:Bind TextFor('开启')}" OffContent="{x:Bind TextFor('关闭')}" x:Name="PathTracingSwitch" Header="{x:Bind TextFor('路径追踪')}" IsEnabled="False" Toggled="QualityChanged" />
+                        <ComboBox x:Name="PathQuality" Header="{x:Bind TextFor('路径追踪画质')}" HorizontalAlignment="Stretch" SelectionChanged="QualityChanged">
+                            <ComboBoxItem Content="{x:Bind TextFor('性能 · 1 样本/像素')}" />
+                            <ComboBoxItem Content="{x:Bind TextFor('平衡 · 2 样本/像素')}" />
+                            <ComboBoxItem Content="{x:Bind TextFor('质量 · 4 样本/像素')}" />
+                            <ComboBoxItem Content="{x:Bind TextFor('极致 · 8 样本/像素')}" />
                         </ComboBox>
-                        <ComboBox x:Name="Antialias" Header="抗锯齿与超分方法" HorizontalAlignment="Stretch"
+                        <ComboBox x:Name="Antialias" Header="{x:Bind TextFor('抗锯齿与超分方法')}" HorizontalAlignment="Stretch"
                                   SelectionChanged="AaMethodChanged" />
-                        <ComboBox x:Name="AaQuality" Header="抗锯齿与超分档位" HorizontalAlignment="Stretch"
+                        <ComboBox x:Name="AaQuality" Header="{x:Bind TextFor('抗锯齿与超分档位')}" HorizontalAlignment="Stretch"
                                   SelectionChanged="AaQualityChanged" />
-                        <CheckBox x:Name="RayReconstruction" Content="DLSS 光线重建" Click="QualityChanged" />
+                        <CheckBox x:Name="RayReconstruction" Content="{x:Bind TextFor('DLSS 光线重建')}" Click="QualityChanged" />
                         <TextBlock x:Name="RayStatus" TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        <CheckBox x:Name="Ssr" Content="反射 · SSR 与地板倒影" Click="QualityChanged" />
-                        <CheckBox x:Name="Ao" Content="环境光遮蔽 SSAO" Click="QualityChanged" />
-                        <CheckBox x:Name="Ssil" Content="间接光照 SSIL" Click="QualityChanged" />
-                        <CheckBox x:Name="Bloom" Content="高光辉光" Click="QualityChanged" />
-                        <CheckBox x:Name="UncapPreview" Content="关闭预览限帧（性能测试）" Click="QualityChanged" />
+                        <CheckBox x:Name="Ssr" Content="{x:Bind TextFor('反射 · SSR 与地板倒影')}" Click="QualityChanged" />
+                        <CheckBox x:Name="Ao" Content="{x:Bind TextFor('环境光遮蔽 SSAO')}" Click="QualityChanged" />
+                        <CheckBox x:Name="Ssil" Content="{x:Bind TextFor('间接光照 SSIL')}" Click="QualityChanged" />
+                        <CheckBox x:Name="Bloom" Content="{x:Bind TextFor('高光辉光')}" Click="QualityChanged" />
+                        <CheckBox x:Name="UncapPreview" Content="{x:Bind TextFor('关闭预览限帧（性能测试）')}" Click="QualityChanged" />
                         <TextBlock x:Name="GraphicsStatus" TextWrapping="Wrap" FontSize="12"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" AutomationProperties.LiveSetting="Polite" />
-                        <Button x:Name="ApplyGraphicsButton" Content="应用画质" Click="ApplyGraphicsClicked" IsEnabled="False"
+                        <Button x:Name="ApplyGraphicsButton" Content="{x:Bind TextFor('应用画质')}" Click="ApplyGraphicsClicked" IsEnabled="False"
                                 HorizontalAlignment="Stretch" Style="{StaticResource AccentButtonStyle}" />
-                        <Button x:Name="ResetGraphicsButton" Content="重置图形设置" Click="ResetGraphics" HorizontalAlignment="Stretch" />
+                        <Button x:Name="ResetGraphicsButton" Content="{x:Bind TextFor('重置图形设置')}" Click="ResetGraphics" HorizontalAlignment="Stretch" />
                     </StackPanel>
                 </Border>
                 <Border Grid.Row="1" Grid.Column="2" Padding="15" CornerRadius="9" VerticalAlignment="Top"
                         Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
                     <StackPanel Spacing="9">
-                        <TextBlock Text="灯光与地面" FontSize="17" FontWeight="SemiBold" />
-                        <ComboBox x:Name="BackgroundPreset" Header="背景预设" HorizontalAlignment="Stretch"
+                        <TextBlock Text="{x:Bind TextFor('灯光与地面')}" FontSize="17" FontWeight="SemiBold" />
+                        <ComboBox x:Name="BackgroundPreset" Header="{x:Bind TextFor('背景预设')}" HorizontalAlignment="Stretch"
                                   SelectionChanged="BackgroundPresetChanged">
-                            <x:String>白色摄影棚</x:String>
-                            <x:String>黑色摄影棚</x:String>
-                            <x:String>自定义</x:String>
+                            <ComboBoxItem Content="{x:Bind TextFor('白色摄影棚')}" />
+                            <ComboBoxItem Content="{x:Bind TextFor('黑色摄影棚')}" />
+                            <ComboBoxItem Content="{x:Bind TextFor('自定义')}" />
                         </ComboBox>
                         <Button x:Name="FloorColorButton" HorizontalAlignment="Stretch">
                             <StackPanel Orientation="Horizontal" Spacing="7">
-                                <TextBlock x:Name="FloorColorLabel" Text="地面颜色" />
+                                <TextBlock x:Name="FloorColorLabel" Text="{x:Bind TextFor('地面颜色')}" />
                                 <Border x:Name="FloorColorSwatch" Style="{StaticResource ColorSwatchStyle}" Visibility="Collapsed" />
                             </StackPanel>
                             <Button.Flyout>
@@ -291,7 +298,7 @@
                                                      IsColorPreviewVisible="True" ColorChanged="FloorColorChanged" />
                                         <StackPanel Orientation="Horizontal" Spacing="7">
                                             <TextBox x:Name="FloorHexInput" Width="115" MaxLength="7" PlaceholderText="#RRGGBB"
-                                                     AutomationProperties.Name="地面颜色编码" LostFocus="FloorHexLostFocus"
+                                                     AutomationProperties.Name="{x:Bind TextFor('地面颜色编码')}" LostFocus="FloorHexLostFocus"
                                                      KeyDown="FloorHexKeyDown" />
                                             <Border x:Name="FloorHexSwatch" Style="{StaticResource ColorSwatchStyle}" Visibility="Collapsed" />
                                         </StackPanel>
@@ -300,7 +307,7 @@
                             </Button.Flyout>
                         </Button>
                         <StackPanel x:Name="LightingPanel" Spacing="6" />
-                        <Button Content="重置灯光与地面" Click="ResetLighting" HorizontalAlignment="Stretch" />
+                        <Button Content="{x:Bind TextFor('重置灯光与地面')}" Click="ResetLighting" HorizontalAlignment="Stretch" />
                     </StackPanel>
                 </Border>
             </Grid>
@@ -312,7 +319,7 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBlock x:Name="Status" Text="正在启动渲染器…" TextTrimming="CharacterEllipsis" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" />
+            <TextBlock x:Name="Status" Text="{x:Bind TextFor('正在启动渲染器…')}" TextTrimming="CharacterEllipsis" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" />
             <ProgressBar x:Name="Progress" Grid.Column="1" Width="150" VerticalAlignment="Center" Visibility="Collapsed" />
             <TextBlock x:Name="MeshDetails" Grid.Column="2" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" />
         </Grid>

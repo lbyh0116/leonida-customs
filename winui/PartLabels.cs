@@ -52,15 +52,38 @@ internal static class PartLabels
         ["tinted"] = "着色", ["integrated"] = "集成式"
     };
 
-    public static string Slot(string? name, string id) =>
-        name is not null && Slots.TryGetValue(name, out var label) ? label : $"配件槽位 {id}";
+    public static string Slot(string? name, string id)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return UiText.F("配件槽位 {0}", id);
+        if (!UiText.English)
+            return Slots.GetValueOrDefault(name, UiText.F("配件槽位 {0}", id));
+        return name switch
+        {
+            "bumper_f" => "Front bumper",
+            "bumper_r" => "Rear bumper",
+            "bumper_f_canards" => "Front bumper canards",
+            "rims_front" => "Front wheels",
+            "rims_rear" => "Rear wheels",
+            "calipers_front" => "Front brake calipers",
+            "calipers_rear" => "Rear brake calipers",
+            "brakediscs" => "Brake discs",
+            "brakediscs_rear" => "Rear brake discs",
+            "tyres_rear" => "Rear tires",
+            "seat_lf" => "Front left seat",
+            "seat_rf" => "Front right seat",
+            "wing_l" => "Left fender",
+            "wing_r" => "Right fender",
+            _ => char.ToUpperInvariant(name[0]) + name[1..].Replace('_', ' ')
+        };
+    }
 
     public static string Option(string label, string modelNames, int number)
     {
         var details = Regex.Split(modelNames, "[^a-zA-Z0-9]+")
             .Select(token => Details.GetValueOrDefault(token))
             .OfType<string>().Distinct().Take(2).ToArray();
-        var style = details.Length == 0 ? "样式" : string.Join(" / ", details);
+        var style = details.Length == 0 ? UiText.T("样式") : string.Join(" / ", details.Select(UiText.T));
         return $"{label} · {style} {number:00}";
     }
 }

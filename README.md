@@ -16,6 +16,8 @@ Leonida Customs 用玩家自己提供的 Xbox 版资源组装并渲染载具。�
 
 软件以只读方式访问原始游戏资源。索引、预览缓存、设置和日志均保存在软件目录下的 `work`。可以将整个软件放在空间充足的磁盘上。也可指定启动目录，例如 `Start-Viewer.cmd "--game=G:\你的游戏目录"`。
 
+在「设置 → 界面语言」可切换简体中文和 English。点击「应用语言」后会重新打开窗口。 To use English, select it in **Settings → Display language** and choose **Apply language**.
+
 ## 在车库里做什么
 
 | 功能 | 用法 |

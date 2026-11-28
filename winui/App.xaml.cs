@@ -8,9 +8,11 @@ public partial class App : Application
 
     public App() => InitializeComponent();
 
-    protected override void OnLaunched(LaunchActivatedEventArgs args)
+    protected override void OnLaunched(LaunchActivatedEventArgs args) => OpenWindow();
+
+    internal void OpenWindow(string? game = null, string? model = null, bool settings = false)
     {
-        window = new MainWindow();
+        window = new MainWindow(game, model, settings);
         window.Activate();
     }
 }
