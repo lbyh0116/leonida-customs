@@ -11,7 +11,7 @@ var _texture_roots: PackedStringArray
 var _textures: Dictionary = {}
 
 
-func apply(geometries: Array[Node], state: GLTFState, path: String, bounds: AABB) -> void:
+func apply(geometries: Array[Node], state: GLTFState, path: String, bounds: AABB, factory_paint: Color) -> void:
 	var vehicle_midline := bounds.get_center().x
 	var directory := path.get_base_dir()
 	for i in range(4):
@@ -79,6 +79,7 @@ func apply(geometries: Array[Node], state: GLTFState, path: String, bounds: AABB
 					continue
 			if kind == "parts" and has_colours and not original.emission_enabled and original.transparency in [BaseMaterial3D.TRANSPARENCY_DISABLED, BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR]:
 				var body := _body_material(original, occlusion, bounds)
+				body.set_shader_parameter("factory_paint", factory_paint)
 				node.set_surface_override_material(surface, body)
 				_track_primary_paint(body, colours)
 				continue

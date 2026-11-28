@@ -439,6 +439,10 @@ func _select(id: String) -> void:
 	for i in range(vehicle.configurations.size()):
 		var config: Dictionary = vehicle.configurations[i]
 		var colour: String = (" · #" + config.color.trim_prefix("#")) if not config.color.is_empty() else ""
+		if config.get("colorSource") == "palette":
+			colour += "（调色板）"
+		elif config.get("colorSource") == "neutral":
+			colour += "（预览底色）"
 		configs.add_item("配置 %02d%s" % [i + 1, colour])
 	_clear_parts()
 	empty_view.text = "正在准备基础模型…" if base_only else "正在准备整车预览…"
@@ -527,7 +531,8 @@ func _render(config: int, picks: Array) -> bool:
 		return false
 	_status("正在加载整车 GLB…")
 	await get_tree().process_frame
-	var imported: Dictionary = preview_stage.show_model(result.path, shown.get("model") == selected)
+	var imported: Dictionary = preview_stage.show_model(result.path, shown.get("model") == selected,
+		false, str(result.get("paintFallback", "")))
 	_set_busy(false)
 	if imported.has("error"):
 		if shown.is_empty():

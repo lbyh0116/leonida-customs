@@ -225,7 +225,8 @@ func _run_asset_command(command: String, data: Dictionary) -> Dictionary:
 			var result: Dictionary = await _source.preview(model, int(data.config), data.parts)
 			if not result.get("ok", false):
 				return result
-			var asset: Dictionary = _stage.show_model(result.path, model == _preview_model, bool(data.get("reset_paint", false)))
+			var asset: Dictionary = _stage.show_model(result.path, model == _preview_model,
+				bool(data.get("reset_paint", false)), str(result.get("paintFallback", "")))
 			if asset.has("error"):
 				return {"ok": false, "error": asset.error}
 			_preview_model = model

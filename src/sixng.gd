@@ -9,6 +9,8 @@ const VEHICLE_CATALOG := preload("res://src/vehicle_catalog.gd")
 const VEHICLE_PROGRESS := preload("res://src/vehicle_progress.gd")
 const HASH_PATTERN := "^[0-9a-f]{8}$"
 const MODEL_PATTERN := "^[a-z0-9_]{1,80}$"
+const UNSET_PAINT := "#ff00ff"
+const NEUTRAL_PAINT := "#d7d7d7"
 
 var workspace: String
 var decoder: String
@@ -135,10 +137,14 @@ func load_source(path: String) -> Dictionary:
 		var card: Dictionary = progress_cards.get(record.model, {})
 		var configurations: Array = []
 		var stock_parts: Array[Dictionary] = []
+		var palette_colour := _palette_colour(record.get("palettes", []))
 		for config: Dictionary in record.get("configurations", []):
-			var colour: Variant = config.get("colour")
+			var colour := _paint_hex(config.get("colour"))
+			var fallback := "" if colour != UNSET_PAINT else ("palette" if not palette_colour.is_empty() else "neutral")
+			if not fallback.is_empty():
+				colour = palette_colour if fallback == "palette" else NEUTRAL_PAINT
 			configurations.append({
-				"color": str(colour.get("srgb_if_linear", colour.get("rgb", ""))) if colour is Dictionary else "",
+				"color": colour, "colorSource": fallback,
 				"count": config.get("parts", []).size()
 			})
 			var part_keys := {}
@@ -215,6 +221,7 @@ func preview(model: String, config: int, selection: Array) -> Dictionary:
 		return await _preview_base(model)
 	if config < 0 or config >= cfgs.size():
 		return _error("该车型没有这个原厂配置。")
+	var paint_fallback: String = cfgs[config].color if not cfgs[config].colorSource.is_empty() else ""
 	var wheel_choices: Dictionary = {}
 	var regular_picks: Array = []
 	var wheel_warnings: Array[String] = []
@@ -250,7 +257,7 @@ func preview(model: String, config: int, selection: Array) -> Dictionary:
 	var info_path := folder.path_join("preview.json")
 	var metadata := _read_dictionary(info_path)
 	if not metadata.is_empty() and FileAccess.file_exists(path):
-		return {"ok": true, "path": path, "asset": metadata}
+		return {"ok": true, "path": path, "asset": metadata, "paintFallback": paint_fallback}
 	if DirAccess.make_dir_recursive_absolute(folder) != OK:
 		return _error("无法创建预览缓存目录。")
 	var building := folder.path_join("vehicle-%s.glb" % OS.get_process_id())
@@ -285,7 +292,32 @@ func preview(model: String, config: int, selection: Array) -> Dictionary:
 		"issues": exported.get("left_out", []).size() + exported.get("not_fitted", []).size() + exported.get("warnings", []).size()
 	}
 	_write_dictionary(info_path, metadata)
-	return {"ok": true, "path": path, "asset": metadata}
+	return {"ok": true, "path": path, "asset": metadata, "paintFallback": paint_fallback}
+
+
+static func _paint_hex(colour: Variant) -> String:
+	if not colour is Dictionary:
+		return ""
+	return str(colour.get("srgb_if_linear", colour.get("rgb", ""))).to_lower()
+
+
+static func _palette_colour(palettes: Array) -> String:
+	# Match SixNG's studio: take the most frequent valid colour in the first usable list.
+	for palette: Array in palettes:
+		var counts := {}
+		for entry: Variant in palette:
+			var hex := _paint_hex(entry)
+			if hex != UNSET_PAINT and hex.length() == 7 and Color.html_is_valid(hex):
+				counts[hex] = int(counts.get(hex, 0)) + 1
+		var chosen := ""
+		var weight := 0
+		for hex: String in counts:
+			if counts[hex] > weight:
+				chosen = hex
+				weight = counts[hex]
+		if not chosen.is_empty():
+			return chosen
+	return ""
 
 
 func _wheel_model(option: Dictionary) -> String:

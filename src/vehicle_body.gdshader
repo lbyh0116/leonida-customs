@@ -10,6 +10,7 @@ uniform float base_metallic = 0.0;
 uniform float base_roughness = 0.5;
 uniform vec4 base_tint : source_color = vec4(1.0);
 uniform vec4 paint_color : source_color = vec4(1.0);
+uniform vec4 factory_paint : source_color = vec4(0.0);
 uniform bool recolor = false;
 uniform int finish = 0;
 uniform bool path_tracing = false;
@@ -40,7 +41,7 @@ void fragment() {
 	ALPHA = base.a * base_tint.a;
 	ALPHA_SCISSOR_THRESHOLD = alpha_cutoff;
 #endif
-	vec3 body_color = recolor ? paint_color.rgb : COLOR.rgb;
+	vec3 body_color = recolor ? paint_color.rgb : mix(COLOR.rgb, factory_paint.rgb, factory_paint.a);
 	vec3 tint = mix(part_color, body_color, paint);
 	float metalness = code < 200.0 ? floor(code / 50.0) / 3.0 : base_metallic;
 	float roughness = code < 200.0 ? clamp(mod(code, 50.0) / 49.0, 0.06, 1.0) : base_roughness;

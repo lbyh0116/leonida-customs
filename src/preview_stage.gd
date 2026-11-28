@@ -384,7 +384,7 @@ func _update_tire_contacts(geometries: Array[Node]) -> void:
 	_floor_parameter("tire_count", count)
 
 
-func show_model(path: String, preserve_camera := false, reset_paint := false) -> Dictionary:
+func show_model(path: String, preserve_camera := false, reset_paint := false, paint_fallback := "") -> Dictionary:
 	var gltf := GLTFDocument.new()
 	var state := GLTFState.new()
 	var error := gltf.append_from_file(path, state)
@@ -418,7 +418,7 @@ func show_model(path: String, preserve_camera := false, reset_paint := false) ->
 	holder.position = Vector3(-_model_origin.x, -bounds.position.y + 0.002, -_model_origin.y)
 	_vehicle_bounds = holder.transform * bounds
 	var materials := VehicleMaterials.new()
-	materials.apply(geometries, state, path, _vehicle_bounds)
+	materials.apply(geometries, state, path, _vehicle_bounds, Color.from_string(paint_fallback, Color(0, 0, 0, 0)))
 	_painted_surfaces = materials.painted_surfaces
 	_vehicle_lamps = materials.vehicle_lamps
 	set_vehicle_lamps(_lamps_enabled)

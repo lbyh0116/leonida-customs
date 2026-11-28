@@ -430,8 +430,10 @@ public sealed partial class MainWindow : Window
         Factory.Items.Clear();
         for (var i = 0; i < vehicle.Configurations.Count; i++)
         {
-            var hex = vehicle.Configurations[i].Color;
-            var label = $"配置 {i + 1:00}" + (string.IsNullOrEmpty(hex) ? "" : $" · {hex}");
+            var configuration = vehicle.Configurations[i];
+            var hex = configuration.Color;
+            var source = configuration.ColorSource switch { "palette" => "（调色板）", "neutral" => "（预览底色）", _ => "" };
+            var label = $"配置 {i + 1:00}" + (string.IsNullOrEmpty(hex) ? "" : $" · {hex}{source}");
             Factory.Items.Add(new FactoryEntry(label, ColorSwatchBrush(hex)));
         }
         if (Factory.Items.Count == 0)
@@ -1388,7 +1390,7 @@ public sealed partial class MainWindow : Window
         public string Subtitle => string.IsNullOrEmpty(Make) ? Id : $"{Make} · {Id}";
     }
 
-    public sealed record FactoryOption(string? Color, int Count);
+    public sealed record FactoryOption(string? Color, int Count, string? ColorSource);
     public sealed record FactoryEntry(string Label, SolidColorBrush? Swatch)
     {
         public Visibility SwatchVisibility => Swatch is null ? Visibility.Collapsed : Visibility.Visible;
